@@ -37,10 +37,18 @@ type Report struct {
 	Strength              string `json:"strength" gorm:"column:strength"`
 	TalentClassified      string `json:"talentClassified" gorm:"column:talent_classified"`
 	IDPProgram            string `json:"idpProgram" gorm:"column:idp_program"`
-	HavQuadran2           int    `json:"havQuadran2" gorm:"column:hav_quadran2"`
-	TalentClassified2     string `json:"talentClassified2" gorm:"column:talent_classified2"`
-	Readiness             string `json:"readiness" gorm:"column:readiness"`
-	CertificateEligible   string `json:"certificateEligible" gorm:"column:certificate_eligible"`
+	// Position in the IDP program: Ongoing / Completed / Exited (promoted before finishing).
+	TrainingStatus      string     `json:"trainingStatus" gorm:"column:training_status;size:20"`
+	ExitedProgram       string     `json:"exitedProgram" gorm:"column:exited_program;size:10"`
+	ProgramExitedAt     *time.Time `json:"programExitedAt" gorm:"column:program_exited_at"`
+	// True when the person had finished every training before the promotion took them out.
+	CompletedBeforeExit bool       `json:"completedBeforeExit" gorm:"column:completed_before_exit;not null;default:false"`
+	// When the status became Completed (all trainings of the program done).
+	ProgramCompletedAt  *time.Time `json:"programCompletedAt" gorm:"column:program_completed_at"`
+	HavQuadran2         int        `json:"havQuadran2" gorm:"column:hav_quadran2"`
+	TalentClassified2   string     `json:"talentClassified2" gorm:"column:talent_classified2"`
+	Readiness           string     `json:"readiness" gorm:"column:readiness"`
+	CertificateEligible string     `json:"certificateEligible" gorm:"column:certificate_eligible"`
 
 	// Training, Mentoring, Coaching
 	TrainingCompleted  string `json:"trainingCompleted" gorm:"column:training_completed"`

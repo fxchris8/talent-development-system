@@ -71,22 +71,14 @@ func (controller *AssessmentController) FindByRole (ctx *gin.Context) {
 
 	assessment, err := controller.AssessmentService.FindByRole(controller.DB, role)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code: http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error: err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
 	questionData, err := controller.QuestionService.FindByRole(controller.DB, role)
 
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code: http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error: err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -138,22 +130,14 @@ func (controller *AssessmentController) FindByRolePublic(ctx *gin.Context) {
 
 	assessment, err := controller.AssessmentService.FindByRole(controller.DB, assessmentRole)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code: http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error: err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
 	questionData, err := controller.QuestionService.FindByRole(controller.DB, assessmentRole)
 
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code: http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error: err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -235,11 +219,7 @@ func (controller *AssessmentController) UpdateAssessment(ctx *gin.Context) {
 	assessmentData, err := controller.AssessmentService.Update(controller.DB, &assessmentRequest)
 
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code: http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error: err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -265,11 +245,7 @@ func (controller *AssessmentController) CreateAssessment(ctx *gin.Context) {
 	assessmentData, err := controller.AssessmentService.Create(controller.DB, &request)
 
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code: http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error: err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -284,11 +260,7 @@ func (controller *AssessmentController) FindAllAssessments(ctx *gin.Context) {
 	assessments, err := controller.AssessmentService.FindAll(controller.DB)
 
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code: http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error: err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -313,11 +285,7 @@ func (controller *AssessmentController) DeleteAssessment(ctx *gin.Context) {
 	err = controller.AssessmentService.Delete(controller.DB, assessmentId)
 
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code: http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error: err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -355,11 +323,7 @@ func (controller *AssessmentController) UploadAssessmentImage(ctx *gin.Context) 
 	path := filepath.Join("storage/assessments", filename)
 
 	if err := ctx.SaveUploadedFile(file, path); err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code: http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error: err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -379,11 +343,7 @@ func (controller *AssessmentController) FindUnassigned(ctx *gin.Context) {
 	assessments, err := controller.AssessmentService.FindUnassigned(controller.DB)
 
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code: http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error: err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -409,11 +369,7 @@ func (controller *AssessmentController) AssignToType(ctx *gin.Context) {
 	err := controller.AssessmentService.AssignAssessment(controller.DB, request.AssessmentID, request.AssessmentTypeID)
 
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code: http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error: err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -447,11 +403,7 @@ func (controller *AssessmentController) UpdateTutorial(ctx *gin.Context) {
 
 	assessmentData, err := controller.AssessmentService.UpdateTutorial(controller.DB, assessmentId, &request)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 

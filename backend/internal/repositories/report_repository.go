@@ -72,6 +72,19 @@ func (r *ReportRepository) CreateAll(db *gorm.DB, reports *[]domain.Report) erro
 					"total_readiness_update_months": report.TotalReadinessUpdateMonths,
 				}
 
+				// Uploading a (different) program for someone is a manual enrolment: it also
+				// applies to people who left their previous program after a promotion.
+				switch report.IDPProgram {
+				case "FDP", "MDP", "SDP":
+					if report.IDPProgram != existing.IDPProgram {
+						updateData["training_status"] = domain.TrainingStatusOngoing
+						updateData["exited_program"] = ""
+						updateData["program_exited_at"] = nil
+						updateData["completed_before_exit"] = false
+						updateData["program_completed_at"] = nil
+					}
+				}
+
 				if err := db.Model(&domain.Report{}).Where("id = ?", existing.ID).Updates(updateData).Error; err != nil {
 					return err
 				}
@@ -132,6 +145,11 @@ func (r *ReportRepository) SelectAll(db *gorm.DB, filter *web.DashboardRequest, 
 		args = append(args, filter.Filter)
 	}
 
+	if filter.InProgram {
+		// active participants only: graduates and promoted people are in the exit history
+		queryBuilder.WriteString(" AND idp_program IN ('FDP','MDP','SDP') AND COALESCE(training_status, '') <> 'Completed'")
+	}
+
 	// Batch Filter
 	if (filter.BatchID > 0) {
 		queryBuilder.WriteString(" AND batch_id = ?")
@@ -173,12 +191,18 @@ func (r *ReportRepository) IDPCount(db *gorm.DB, filter *web.DashboardRequest, d
 
 	queryBuilder.WriteString(`
 		SELECT 
-			SUM(CASE WHEN idp_program = 'MDP' THEN 1 ELSE 0 END) as mdp,
-			SUM(CASE WHEN idp_program = 'FDP' THEN 1 ELSE 0 END) as fdp,
-			SUM(CASE WHEN idp_program = 'SDP' THEN 1 ELSE 0 END) as sdp
+			COALESCE(SUM(CASE WHEN idp_program = 'MDP' THEN 1 ELSE 0 END), 0) as mdp,
+			COALESCE(SUM(CASE WHEN idp_program = 'FDP' THEN 1 ELSE 0 END), 0) as fdp,
+			COALESCE(SUM(CASE WHEN idp_program = 'SDP' THEN 1 ELSE 0 END), 0) as sdp,
+			COUNT(*) as total
 		FROM reports
 		WHERE 1=1
 	`)
+
+	if filter != nil && filter.InProgram {
+		// active participants only: graduates and promoted people are in the exit history
+		queryBuilder.WriteString(" AND idp_program IN ('FDP','MDP','SDP') AND COALESCE(training_status, '') <> 'Completed'")
+	}
 
 	if (filter != nil && filter.BatchID > 0) {
 		queryBuilder.WriteString(" AND batch_id = ?")

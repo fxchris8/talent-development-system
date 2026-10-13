@@ -38,11 +38,7 @@ func (controller *QuestionController) Create(ctx *gin.Context) {
 
 	questionData, err := controller.QuestionService.Create(controller.DB, &request)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -56,11 +52,7 @@ func (controller *QuestionController) Create(ctx *gin.Context) {
 func (controller *QuestionController) FindAll(ctx *gin.Context) {
 	questionDataList, err := controller.QuestionService.FindAll(controller.DB)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -105,11 +97,7 @@ func (controller *QuestionController) FindByRole(ctx *gin.Context) {
 
 	questionDataList, err := controller.QuestionService.FindByRole(controller.DB, role)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -134,11 +122,7 @@ func (controller *QuestionController) FindByAssessmentId(ctx *gin.Context) {
 
 	questionDataList, err := controller.QuestionService.FindByAssessmentId(controller.DB, assessmentId)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -183,11 +167,7 @@ func (controller *QuestionController) Update(ctx *gin.Context) {
 
 	questionData, err := controller.QuestionService.Update(controller.DB, &request)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -212,11 +192,7 @@ func (controller *QuestionController) Delete(ctx *gin.Context) {
 
 	err = controller.QuestionService.Delete(controller.DB, questionId)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -252,11 +228,7 @@ func (controller *QuestionController) BulkDelete(ctx *gin.Context) {
 
 	err := controller.QuestionService.BulkDelete(controller.DB, request.QuestionIds)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -291,11 +263,7 @@ func (controller *QuestionController) UpdateAspect(ctx *gin.Context) {
 
 	questionData, err := controller.QuestionService.UpdateAspect(controller.DB, questionId, request.AspectID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -328,11 +296,7 @@ func (controller *QuestionController) BulkUpdateAspect(ctx *gin.Context) {
 
 	err := controller.QuestionService.BulkUpdateAspect(controller.DB, request.QuestionIds, request.AspectID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 

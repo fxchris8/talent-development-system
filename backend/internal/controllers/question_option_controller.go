@@ -52,11 +52,7 @@ func (controller *QuestionOptionController) FindAllQuestionsWithOptions(ctx *gin
 	questionsData, err := controller.QuestionService.FindByRole(controller.DB, request.Role)
 	if err != nil {
 		controller.Log.WithError(err).Error("Failed to fetch questions")
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "Internal Server Error",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -152,11 +148,7 @@ func (controller *QuestionOptionController) CreateQuestionWithOptions(ctx *gin.C
 	if err != nil {
 		tx.Rollback() // ROLLBACK
 		controller.Log.WithError(err).Error("Failed to create question - transaction rolled back")
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "Internal Server Error",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -279,11 +271,7 @@ func (controller *QuestionOptionController) UpdateQuestionWithOptions(ctx *gin.C
 	if err != nil {
 		tx.Rollback() // ROLLBACK
 		controller.Log.WithError(err).Error("Failed to update question - transaction rolled back")
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "Internal Server Error",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -697,11 +685,7 @@ func (controller *QuestionOptionController) BulkDelete(ctx *gin.Context) {
 		controller.Log.WithError(err).
 			WithField("questionIds", request.QuestionIds).
 			Error("Failed to bulk delete questions - transaction rolled back")
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 

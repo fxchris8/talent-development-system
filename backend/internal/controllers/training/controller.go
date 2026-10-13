@@ -1,7 +1,9 @@
 package trainingController
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"backend/internal/services"
 	"backend/internal/services/training"
@@ -14,6 +16,7 @@ type TrainingController struct {
 	dbSvc   *services.TrainingService
 	aiSvc   *training.Service
 	quizSvc *training.QuizService
+	audioSvc *training.NarrationAudioService
 	log     *logrus.Logger
 }
 
@@ -21,12 +24,14 @@ func NewTrainingController(
 	dbSvc *services.TrainingService,
 	aiSvc *training.Service,
 	quizSvc *training.QuizService,
+	audioSvc *training.NarrationAudioService,
 	log *logrus.Logger,
 ) *TrainingController {
 	return &TrainingController{
 		dbSvc:   dbSvc,
 		aiSvc:   aiSvc,
 		quizSvc: quizSvc,
+		audioSvc: audioSvc,
 		log:     log,
 	}
 }
@@ -98,6 +103,19 @@ func (h *TrainingController) Generate(c *gin.Context) {
 		// Not returning error, karena file sudah berhasil digenerate
 	}
 
+	// The narration belongs to one PPTX: drop the old one and prepare the new one in the
+	// background so "Dengarkan" can play right away.
+	if req.OldFileURL != "" {
+		h.audioSvc.Remove(req.OldFileURL)
+	}
+	go func(pptx string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+		defer cancel()
+		if _, err := h.audioSvc.Ensure(ctx, pptx); err != nil {
+			h.log.WithError(err).Warn("Gagal menyiapkan audio narasi di latar belakang")
+		}
+	}(pptxLink)
+
 	c.JSON(http.StatusOK, gin.H{
 		"message":  "Materi training berhasil digenerate (PPTX + PDF).",
 		"pptx_link": pptxLink,
@@ -145,5 +163,64 @@ func (h *TrainingController) GenerateQuiz(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message":   "Quiz berhasil digenerate.",
 		"quiz_link": quizLink,
+	})
+}
+
+// Narration returns the text of every slide of a generated PPT so the browser can read it aloud.
+func (h *TrainingController) Narration(c *gin.Context) {
+	var req struct {
+		PptxURL string `json:"pptx_url" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Request tidak valid: " + err.Error(),
+		})
+		return
+	}
+
+	slides, err := h.aiSvc.SlideNarration(req.PptxURL)
+	if err != nil {
+		h.log.WithError(err).Error("Gagal mengambil narasi PPT")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Gagal mengambil narasi: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"slides": slides,
+	})
+}
+
+// NarrationAudio returns the URL of the spoken (Indonesian) narration of a generated PPT,
+// creating the audio on first use.
+func (h *TrainingController) NarrationAudio(c *gin.Context) {
+	var req struct {
+		PptxURL string `json:"pptx_url" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "File PPT belum tersedia untuk materi ini.",
+		})
+		return
+	}
+
+	// Not tied to the request context: closing the tab must not waste a half-made audio.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+
+	audioURL, err := h.audioSvc.Ensure(ctx, req.PptxURL)
+	if err != nil {
+		h.log.WithError(err).Error("Gagal membuat audio narasi")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Gagal membuat suara: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"audio_url": audioURL,
 	})
 }

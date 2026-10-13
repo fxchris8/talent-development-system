@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Cookies from "universal-cookie";
 import { Loader2, ShieldCheck } from "lucide-react";
@@ -30,7 +30,7 @@ function decodeTokenPayload(token: string): TokenPayload | null {
   }
 }
 
-export default function SSOCallbackPage() {
+function SSOCallbackPageContent() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -87,5 +87,15 @@ export default function SSOCallbackPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+// useSearchParams() membuat halaman ini bergantung pada URL saat render di client. Tanpa
+// Suspense, `next build` (production) gagal mem-prerender halaman ini dan build berhenti.
+export default function SSOCallbackPage() {
+  return (
+    <Suspense fallback={null}>
+      <SSOCallbackPageContent />
+    </Suspense>
   );
 }

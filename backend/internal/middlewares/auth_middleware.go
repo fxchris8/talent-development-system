@@ -1,7 +1,6 @@
 package middlewares
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
@@ -22,27 +21,21 @@ func DeleteToken(ctx *gin.Context) {
 }
 
 func AuthMiddleware(secret string) gin.HandlerFunc {
-	fmt.Println("AuthMiddleware initialized with secret:", secret)
 	return func(ctx *gin.Context) {
-		fmt.Printf("[AUTH] Method: %s, Path: %s\n", ctx.Request.Method, ctx.Request.URL.Path)
 
 		var tokenString string
 		var err error
 
 		// First try to get token from cookie
 		tokenString, err = ctx.Cookie(TOKEN_COOKIE)
-		fmt.Printf("[AUTH] Cookie attempt - Error: %v, Token: %s\n", err, tokenString)
 
 		// If no cookie, try Authorization header
 		if err != nil {
 			authHeader := ctx.GetHeader("Authorization")
-			fmt.Printf("[AUTH] Authorization header: '%s'\n", authHeader)
 
 			if authHeader != "" && len(authHeader) > 7 && authHeader[:7] == "Bearer " {
 				tokenString = authHeader[7:] // Remove "Bearer " prefix
-				fmt.Printf("[AUTH] Token extracted from header: %s\n", tokenString)
 			} else {
-				fmt.Printf("[AUTH] No valid authorization header found\n")
 				ctx.JSON(http.StatusUnauthorized, web.ErrorResponse{
 					Code:   http.StatusUnauthorized,
 					Status: "Unauthorized",
@@ -53,7 +46,6 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 			}
 		}
 
-		fmt.Println("[AUTH] Final token to validate:", tokenString)
 
 		// TODO: Decode and Validate it
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
@@ -75,9 +67,10 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 
 		// TODO: Claim the JWT
 		if claims, ok := token.Claims.(jwt.MapClaims); ok {
-			fmt.Println(claims)
 			// TODO: Check the expired time
-			if float64(time.Now().Unix()) > claims["expired"].(float64) {
+			// A token without a numeric "expired" claim is rejected instead of panicking.
+			expired, hasExpiry := claims["expired"].(float64)
+			if !hasExpiry || float64(time.Now().Unix()) > expired {
 				//! Delete the Cookie
 				DeleteToken(ctx)
 				ctx.JSON(http.StatusUnauthorized, web.ErrorResponse{
@@ -91,7 +84,6 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 
 			// TODO: Find the user with Token Sub
 			// var user domain.User
-			fmt.Println(claims)
 
 			// TODO: Set the User
 
@@ -112,5 +104,18 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 		}
 		// fmt.Println(tokenString)
 		// ctx.Next()
+	}
+}
+
+// RequireAuthForWrites lets anyone read (GET/HEAD/OPTIONS) but requires a login for every
+// request that changes data. Used for the question bank, which the public quiz pages read.
+func RequireAuthForWrites(auth gin.HandlerFunc) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		switch ctx.Request.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			ctx.Next()
+		default:
+			auth(ctx)
+		}
 	}
 }

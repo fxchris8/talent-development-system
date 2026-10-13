@@ -11,9 +11,8 @@ import { useTimerPauseResume } from "@/hooks/useTimerPauseResume";
 import { ValueAssessmentData } from "./page";
 import Image from "next/image";
 import { useGetAssessmentByRole, usePostAssessmentResults } from "./_hooks/useAssessment";
-import { BASE_URL } from "@/app/lib/api";
+import { isValidImageUrl, resolveImageUrl } from "@/app/lib/image";
 import { TutorialDisplay } from "@/components/tutorial-display";
-import { isValidImageUrl } from "@/app/assessment-manager/questions-admin";
 
 interface Section1Props {
   onNext: () => void;
@@ -414,12 +413,14 @@ export default function Section1({
                 </div>
 
                 <div className="text-gray-700 text-lg leading-relaxed mb-6 flex flex-col gap-2">
-                  {currentQuestion?.isImage === 1 && (
+                  {currentQuestion?.isImage === 1 && isValidImageUrl(currentQuestion?.imageUrl) && (
                     <Image
-                      src={BASE_URL + currentQuestion?.imageUrl}
+                      src={resolveImageUrl(currentQuestion?.imageUrl as string)}
+                      unoptimized
                       width={300}
                       height={200}
                       alt={"Gambar " + currentQuestionIndex}
+                      className="h-auto max-w-full rounded object-contain"
                     />
                   )}
                   {currentQuestion?.questionText}
@@ -466,10 +467,12 @@ export default function Section1({
                           <div className="flex flex-col gap-2">
                             {isValidImageUrl(option.imageUrl) && (
                               <Image
-                                src={BASE_URL + option?.imageUrl}
+                                src={resolveImageUrl(option.imageUrl as string)}
+                                unoptimized
                                 width={300}
                                 height={200}
                                 alt={"Gambar " + option.optionId}
+                                className="h-auto max-w-full rounded object-contain"
                               />
                             )}
                             {option.optionText}

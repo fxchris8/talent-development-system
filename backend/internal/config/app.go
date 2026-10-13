@@ -127,8 +127,9 @@ func Bootstrap(config *BootstrapConfig) {
 
 	nanikaAPIService := services.NewNanikaAPIService(config.DB, config.Log, seamenCacheRepository, mutationCacheRepository)
 
-	cronService := services.NewCronService(config.Log, idpCalculationService, apolloAPIService, nanikaAPIService, batchSnapshotService)
+	cronService := services.NewCronService(config.Log, idpCalculationService, apolloAPIService, nanikaAPIService, batchSnapshotService, reportService)
 
+	citrixSyncController := controllers.NewCitrixSyncController(cronService, config.Log)
 	reportController := controllers.NewReportController(reportService, config.Log, apolloAPIService)
 	userController := controllers.NewUserController(userService, ssoService, config.Log)
 	mentoringReportController := controllers.NewMentoringReportController(mentoringReportService, config.Log)
@@ -157,19 +158,29 @@ func Bootstrap(config *BootstrapConfig) {
 	newRecruiterController := controllers.NewNewRecruiterController(config.DB, newRecruiterService)
 
 	// --- Generator Service & Controller (LLM/PDF)
+	llmClient := trainingService.NewLLMClient(
+		config.Log,
+		config.Config.GetString("OPENROUTER_API_KEY"),
+		config.Config.GetString("OPENROUTER_MODEL"),
+		config.Config.GetString("OPENROUTER_BASE_URL"),
+		config.Config.GetString("MODEL_PROVIDER"),
+	)
 	trainingGenService := trainingService.NewTrainingService(
 		config.Log,
-		config.Config.GetString("GEMINI_API_KEY"),
-		config.Config.GetString("GEMINI_MODEL"),
+		llmClient,
 		config.Config.GetString("BACKEND_PUBLIC_URL"),
 	)
 	quizGenService := trainingService.NewQuizService(
 		config.Log,
-		config.Config.GetString("GEMINI_API_KEY"),
-		config.Config.GetString("GEMINI_MODEL"),
+		llmClient,
 		config.Config.GetString("BACKEND_PUBLIC_URL"),
 	)
-	trainingGenController := trainingController.NewTrainingController(trainingServiceDB, trainingGenService, quizGenService, config.Log)
+	narrationAudioService := trainingService.NewNarrationAudioService(
+		config.Log,
+		config.Config.GetString("TTS_URL"),
+		config.Config.GetString("BACKEND_PUBLIC_URL"),
+	)
+	trainingGenController := trainingController.NewTrainingController(trainingServiceDB, trainingGenService, quizGenService, narrationAudioService, config.Log)
 
 	authMiddleware := middlewares.AuthMiddleware(config.Config.GetString("JWT_SECRET_KEY"))
 
@@ -195,6 +206,7 @@ func Bootstrap(config *BootstrapConfig) {
 		MasterController:             masterController,
 		AspectController:             aspectController,
 		AuthMiddleware:               authMiddleware,
+		OptionalAuthMiddleware:       middlewares.OptionalAuth(config.Config.GetString("JWT_SECRET_KEY")),
 		AssignmentController:         assignmentController,
 
 		IDPTrackingController:   idpTrackingController,
@@ -202,11 +214,12 @@ func Bootstrap(config *BootstrapConfig) {
 		QuizController:          quizController,
 		ScoringConfigController: scoringConfigController,
 		NewRecruiterController:  newRecruiterController,
+		CitrixSyncController:    citrixSyncController,
 		BatchController:         batchController,
 	}
 	routerConfig.Setup()
 
-	routers.SetupAdminRouter(config.App, adminController)
+	routers.SetupAdminRouter(config.App, adminController, authMiddleware)
 
 	// --- Start Cron Service
 	if err := cronService.Start(); err != nil {

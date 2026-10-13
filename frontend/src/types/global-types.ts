@@ -37,6 +37,8 @@ export interface IReport {
   strength: number;
   talentClassified: string;
   idpProgram: string;
+  trainingStatus?: string; // Ongoing | Completed | Exited
+  exitedProgram?: string; // program yang ditinggalkan saat naik jabatan
   idp: string; //  tambahan
   havQuadran2: number;
   talentClassified2: string;
@@ -244,6 +246,7 @@ export interface ICompetencyType {
 export interface SeamanLookup {
   name: string;
   seamanCode: string;
+  alreadyAdded?: boolean;
 }
 
 export interface IGapCompetency {

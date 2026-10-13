@@ -19,6 +19,8 @@ type DashboardRequest struct {
 	Filter   string `form:"filter" binding:"omitempty,oneof=MDP FDP SDP"`
 	BatchID  int    `form:"batch_id"`
 	Query    string `form:"query"`
+	// InProgram limits the result to people currently in FDP/MDP/SDP (the dashboard list).
+	InProgram bool `form:"in_program"`
 }
 
 func (request *DashboardRequest) ParseError(errs validator.ValidationErrors) map[string]string {

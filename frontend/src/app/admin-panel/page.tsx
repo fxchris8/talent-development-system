@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Loader2, AlertTriangle, Database, Trash2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { authFetch } from "@/app/lib/auth-fetch";
 
 interface DataStatistics {
   reports: number;
@@ -42,7 +43,7 @@ export default function AdminPanel() {
     setLoading(true);
     try {
       const baseURL = process.env.NEXT_PUBLIC_API_ENDPOINT || "http://localhost:8080";
-      const response = await fetch(`${baseURL}/admin/statistics`);
+      const response = await authFetch(`${baseURL}/admin/statistics`);
       if (!response.ok) throw new Error("Failed to fetch statistics");
       const result = await response.json();
       setStatistics(result.data);
@@ -62,7 +63,7 @@ export default function AdminPanel() {
     setActionLoading(action);
     try {
       const baseURL = process.env.NEXT_PUBLIC_API_ENDPOINT || "http://localhost:8080";
-      const response = await fetch(`${baseURL}/admin/${action}`, {
+      const response = await authFetch(`${baseURL}/admin/${action}`, {
         method: "DELETE",
       });
       if (!response.ok) throw new Error(`Failed to delete ${action}`);

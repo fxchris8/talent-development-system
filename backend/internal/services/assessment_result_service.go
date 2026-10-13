@@ -59,6 +59,17 @@ func (service *assessmentResultServiceImpl) SubmitAssessment(db *gorm.DB, reques
 		return nil, err
 	}
 
+	// Only seafarers assigned to this assessment's type may submit answers for it.
+	if assessment.AssessTypeID != nil {
+		assigned, err := seafarerIsAssigned(db, request.SeafarerCode, *assessment.AssessTypeID)
+		if err != nil {
+			return nil, err
+		}
+		if !assigned {
+			return nil, ErrNotAssigned
+		}
+	}
+
 	// Find or create assessment result
 	var assessmentResult *domain.AssessmentResult
 	err = db.Where("seafarer_code = ? AND assessment_id = ?", request.SeafarerCode, assessment.AssessmentID).

@@ -10,9 +10,8 @@ import { useTimerPauseResume } from "@/hooks/useTimerPauseResume";
 import { CESAssessmentData } from "../types";
 import Image from "next/image";
 import { useGetAssessmentByRole, usePostCESResults } from "./_hooks/useAssessment";
-import { BASE_URL } from "../../lib/api";
+import { isValidImageUrl, resolveImageUrl } from "../../lib/image";
 import { TutorialDisplay } from "@/components/tutorial-display";
-import { isValidImageUrl } from "@/app/assessment-manager/questions-admin";
 
 interface QuestionsProps {
   onNext: () => void;
@@ -352,11 +351,13 @@ export default function Questions({
                 </div>
 
                 <div className="text-gray-700 text-lg leading-relaxed mb-6 flex flex-col gap-2">
-                  {currentQuestion?.isImage === 1 && (
+                  {currentQuestion?.isImage === 1 && isValidImageUrl(currentQuestion?.imageUrl) && (
                     <Image
-                      src={BASE_URL + currentQuestion?.imageUrl}
+                      src={resolveImageUrl(currentQuestion.imageUrl as string)}
                       width={300}
                       height={200}
+                      unoptimized
+                      className="h-auto max-w-full rounded object-contain"
                       alt={"Gambar " + currentQuestionIndex}
                     />
                   )}
@@ -400,9 +401,11 @@ export default function Questions({
                           <div className="flex flex-col gap-2">
                             {isValidImageUrl(option.imageUrl) && (
                               <Image
-                                src={BASE_URL + option?.imageUrl}
+                                src={resolveImageUrl(option.imageUrl as string)}
                                 width={300}
                                 height={200}
+                                unoptimized
+                                className="h-auto max-w-full rounded object-contain"
                                 alt={"Gambar " + option.optionId}
                               />
                             )}

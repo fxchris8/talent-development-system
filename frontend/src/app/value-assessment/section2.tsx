@@ -12,8 +12,7 @@ import { useCountdown } from "@/hooks/use-session-storage";
 import { useTimerPauseResume } from "@/hooks/useTimerPauseResume";
 import { useStorageCountdown } from "@/hooks/use-local-storage";
 import Image from "next/image";
-import { BASE_URL } from "../lib/api";
-import { isValidImageUrl } from "../assessment-manager/questions-admin";
+import { isValidImageUrl, resolveImageUrl } from "@/app/lib/image";
 
 interface Section2Props {
   onNext: () => void;
@@ -440,10 +439,12 @@ export default function Section2({
                             <div className="flex flex-col gap-2">
                               {isValidImageUrl(option.imageUrl) && (
                                 <Image
-                                  src={BASE_URL + option?.imageUrl}
+                                  src={resolveImageUrl(option?.imageUrl as string)}
+                                  unoptimized
                                   width={300}
                                   height={200}
                                   alt={"Gambar " + option.optionId}
+                                  className="h-auto max-w-full rounded object-contain"
                                 />
                               )}
                               {option.optionText}

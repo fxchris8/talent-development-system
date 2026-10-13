@@ -54,10 +54,25 @@ func (s *IDPCalculationService) CalculateReadinessForMonth(reportID int, month t
 		return fmt.Errorf("failed to get report: %w", err)
 	}
 
+	// Someone who left the program (promoted) is no longer tracked.
+	if report.TrainingStatus == domain.TrainingStatusExited {
+		s.Log.Infof("Skipping report ID %d - left program %s", reportID, report.ExitedProgram)
+		return nil
+	}
+
 	// Skip if readiness_month is 0 or nil (talent sudah ready atau tidak aktif)
 	if report.ReadinessMonth == nil || *report.ReadinessMonth == 0 {
 		s.Log.Infof("Skipping report ID %d - readiness_month is 0 or nil", reportID)
 		return nil
+	}
+
+	// The daily job recalculates the current month every day. Remember whether this month's
+	// one-month reduction was already taken off the report, so it is applied only once.
+	previousReduction := 0
+	if existing, err := s.IDPTrackingRepo.GetByReportAndMonth(reportID, month); err != nil {
+		s.Log.Warnf("Failed to read existing tracking for report ID %d: %v", reportID, err)
+	} else if existing != nil {
+		previousReduction = existing.ReadinessReduction
 	}
 
 	// DELETE existing tracking for this report+month to prevent duplicates
@@ -184,36 +199,49 @@ func (s *IDPCalculationService) CalculateReadinessForMonth(reportID int, month t
 	tracking.CalculateRates()
 
 	// 5. Apply readiness reduction to report if needed (update total_readiness_update_months)
-	if tracking.ReadinessReduction < 0 {
-		// Get current total_readiness_update_months (this is the column we need to reduce)
-		currentTotal := 0
-		if report.TotalReadinessUpdateMonths != nil {
-			currentTotal = *report.TotalReadinessUpdateMonths
-		}
-		
-		newTotal := currentTotal + tracking.ReadinessReduction // -1 month
-		if newTotal < 0 {
-			newTotal = 0
-		}
-		tracking.NewReadinessMonth = newTotal
+	currentTotal := 0
+	if report.TotalReadinessUpdateMonths != nil {
+		currentTotal = *report.TotalReadinessUpdateMonths
+	}
+	newTotal := readinessMonthsAfter(currentTotal, previousReduction, tracking.ReadinessReduction)
+	tracking.NewReadinessMonth = newTotal
 
-		// Update report's total_readiness_update_months
-		report.TotalReadinessUpdateMonths = &newTotal
-		if err := s.ReportRepo.Update(s.DB, &report); err != nil {
+	if newTotal != currentTotal {
+		// Update only this column: saving the whole (stale) report would undo changes made
+		// elsewhere while this calculation was running.
+		if err := s.DB.Model(&domain.Report{}).Where("id = ?", reportID).
+			Update("total_readiness_update_months", newTotal).Error; err != nil {
 			s.Log.Errorf("Failed to update report total_readiness_update_months: %v", err)
 		} else {
-			s.Log.Infof("✅ Reduced total_readiness_update_months for report ID %d: %d -> %d months (readiness_rate: %.0f%%)", 
+			s.Log.Infof("total_readiness_update_months for report ID %d: %d -> %d months (readiness_rate: %.0f%%)",
 				reportID, currentTotal, newTotal, tracking.ReadinessRate)
-		}
-	} else {
-		if report.TotalReadinessUpdateMonths != nil {
-			tracking.NewReadinessMonth = *report.TotalReadinessUpdateMonths
 		}
 	}
 
 	// 6. Save tracking (upsert to prevent duplicates)
 	if err := s.IDPTrackingRepo.Upsert(tracking); err != nil {
 		return fmt.Errorf("failed to upsert tracking: %w", err)
+	}
+
+	// 7. Training status: Completed once every training of the gap competencies was done
+	//    (collected over all months), otherwise Ongoing.
+	if programLevel(report.IDPProgram) > 0 {
+		var done []string
+		if err := s.DB.Model(&domain.IDPTracking{}).Where("report_id = ?", reportID).
+			Pluck("competency_done", &done).Error; err != nil {
+			s.Log.Warnf("Failed to load training progress for report ID %d: %v", reportID, err)
+		} else if status := TrainingStatusFromProgress(competencyCodes, done); status != report.TrainingStatus {
+			// Remember when the program was finished (and forget it if the status falls back).
+			var completedAt *time.Time
+			if status == domain.TrainingStatusCompleted {
+				now := time.Now()
+				completedAt = &now
+			}
+			if err := s.DB.Model(&domain.Report{}).Where("id = ?", reportID).
+				Updates(map[string]interface{}{"training_status": status, "program_completed_at": completedAt}).Error; err != nil {
+				s.Log.Errorf("Failed to update training status for report ID %d: %v", reportID, err)
+			}
+		}
 	}
 
 	s.Log.Infof("Successfully calculated readiness for report ID %d - Readiness Rate: %.2f%%, Training: %d/%d, Coaching: %d/%d, Mentoring: %d/%d",
@@ -451,4 +479,16 @@ func (s *IDPCalculationService) RefreshReadinessForReport(reportID int) error {
 
 	// Recalculate for current month
 	return s.CalculateReadinessForMonth(reportID, time.Now())
+}
+
+// readinessMonthsAfter returns the report's remaining readiness months after this month's
+// calculation. previousReduction is what an earlier run of the same month already applied
+// (0 or -1) and newReduction is what the fresh calculation says (0 or -1), so only the
+// difference is applied and recalculating a month never takes a second month off.
+func readinessMonthsAfter(currentTotal, previousReduction, newReduction int) int {
+	total := currentTotal + (newReduction - previousReduction)
+	if total < 0 {
+		return 0
+	}
+	return total
 }

@@ -202,11 +202,19 @@ func (s *NanikaAPIService) FetchAndCacheMutationData() error {
 	return fmt.Errorf("API error after 3 retries: %w", lastErr)
 }
 
+// jakartaLocation falls back to a fixed WIB offset when tzdata is unavailable.
+func jakartaLocation() *time.Location {
+	if loc, err := time.LoadLocation("Asia/Jakarta"); err == nil {
+		return loc
+	}
+	return time.FixedZone("WIB", 7*60*60)
+}
+
 func (s *NanikaAPIService) fetchMutationFromAPI() ([]domain.MutationCache, error) {
 	payload := map[string]interface{}{
 		"seaman_name":        "",
 		"transaction_date_1": "01/01/2020",
-		"transaction_date_2": "01/01/2026",
+		"transaction_date_2": time.Now().In(jakartaLocation()).Format("02/01/2006"),
 		"from_rank_name":     "",
 		"to_rank_name":       "",
 		"from_vessel_code":   "",

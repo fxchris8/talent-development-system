@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 
+	"backend/internal/middlewares"
 	"backend/internal/models/web"
 	"backend/internal/services"
 
@@ -115,8 +116,24 @@ func (controller *ReportController) IDPCount(ctx *gin.Context) {
 	ctx.JSON(response.Code, response)
 }
 
-func (controlelr *ReportController) TestPanic(ctx *gin.Context) {
-	panic("Oopps...")
+// ProgramExits lists the people who left an IDP program because of a promotion.
+func (controller *ReportController) ProgramExits(ctx *gin.Context) {
+	exits, err := controller.Service.ProgramExits()
+	if err != nil {
+		controller.Log.WithError(err).Error("Failed to load program exits")
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
+			Code:   http.StatusInternalServerError,
+			Status: "Internal Server Error",
+			Error:  "Gagal memuat riwayat keluar program",
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, web.SuccessResponse{
+		Code:   http.StatusOK,
+		Status: "OK",
+		Data:   exits,
+	})
 }
 
 func (controller *ReportController) FindBySeamanCode(ctx *gin.Context) {
@@ -178,6 +195,20 @@ func (controller *ReportController) FindBySeafarerCode(ctx *gin.Context) {
 			Error:  err.Error(),
 		})
 		return
+	}
+
+	// The quiz pages are public, so an anonymous caller only learns who the code belongs to.
+	if !middlewares.IsAuthenticated(ctx) {
+		if full, ok := response.Data.(web.ReportData); ok {
+			response.Data = web.ReportIdentity{
+				ID:           full.ID,
+				SeamanCode:   full.SeamanCode,
+				SeafarerCode: full.SeafarerCode,
+				Nama:         full.Nama,
+				Jabatan:      full.Jabatan,
+				VesselName:   full.VesselName,
+			}
+		}
 	}
 
 	ctx.JSON(response.Code, response)

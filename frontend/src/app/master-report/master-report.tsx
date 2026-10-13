@@ -54,6 +54,7 @@ import { useMasterReports } from "./_hooks/master-report";
 import { useMasterReportUI } from "./_hooks/useMasterReportUI";
 import { useGetAllAssessmentTypes } from "./_hooks/useAssessmentType";
 import type { IReport, SeamanLookup } from "@/types/global-types";
+import { TrainingStatusBadge } from "@/components/training-status-badge";
 import { useAvailableSeamen } from "./_hooks/useAvailableSeamen";
 import { useBatches, type Batch } from "./_hooks/useBatch";
 
@@ -246,6 +247,7 @@ export default function MasterPage({
     "Vessel Name",
     "Position",
     "IDP Program",
+    "Training Status",
     "Age",
     "Certificate",
     "Kondite Review",
@@ -894,10 +896,13 @@ export default function MasterPage({
                                 )
                               : addForm.selected?.seamanCode === seaman.seamanCode;
 
+                            const alreadyAdded = !!seaman.alreadyAdded;
+
                             return (
                               <div
                                 key={seaman.seamanCode}
                                 onClick={() => {
+                                  if (alreadyAdded) return;
                                   if (addForm.bulkAddMode) {
                                     toggleBulkSelection(seaman);
                                   } else {
@@ -907,10 +912,12 @@ export default function MasterPage({
                                     });
                                   }
                                 }}
-                                className={`px-4 py-3 cursor-pointer transition-colors ${
-                                  isSelected
-                                    ? "bg-blue-50 border-l-4 border-blue-500"
-                                    : "hover:bg-gray-50"
+                                className={`px-4 py-3 transition-colors ${
+                                  alreadyAdded
+                                    ? "cursor-not-allowed bg-gray-50 opacity-60"
+                                    : isSelected
+                                      ? "cursor-pointer bg-blue-50 border-l-4 border-blue-500"
+                                      : "cursor-pointer hover:bg-gray-50"
                                 }`}
                               >
                                 <div className="flex items-center gap-3">
@@ -918,6 +925,7 @@ export default function MasterPage({
                                     <input
                                       type="checkbox"
                                       checked={isSelected}
+                                      disabled={alreadyAdded}
                                       onChange={() => toggleBulkSelection(seaman)}
                                       onClick={(e) => e.stopPropagation()}
                                       className="w-4 h-4 rounded border-gray-300"
@@ -929,6 +937,11 @@ export default function MasterPage({
                                       Seaman Code: {seaman.seamanCode}
                                     </div>
                                   </div>
+                                  {alreadyAdded && (
+                                    <span className="rounded bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
+                                      Sudah ada di report
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -1775,6 +1788,12 @@ export default function MasterPage({
                       {row.jabatan || "-"}
                     </TableCell>
                     <TableCell className="text-center text-xs">{row.idpProgram || "-"}</TableCell>
+                    <TableCell className="text-center text-xs">
+                      <TrainingStatusBadge
+                        status={row.trainingStatus}
+                        exitedProgram={row.exitedProgram}
+                      />
+                    </TableCell>
                     <TableCell className="text-center">
                       {row.age ? (
                         <span className="inline-block bg-gray-100 text-gray-700 text-xs font-medium px-2 py-0.5 rounded-full">

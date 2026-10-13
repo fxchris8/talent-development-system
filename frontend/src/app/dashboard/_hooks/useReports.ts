@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import type {
   IReport,
@@ -11,6 +11,7 @@ interface IdpCountData {
   mdp: number;
   fdp: number;
   sdp: number;
+  total?: number;
 }
 
 // Query key factory for reports queries
@@ -32,6 +33,7 @@ export function useGetIdpCount(batchId?: number | null, query?: string) {
         page: "next", // Must be "next" or "prev" according to backend validation
         page_size: "1000", // Use a large page size since we just need the count
         anchor_id: "0", // Optional but good to include
+        in_program: "true", // the dashboard only counts people currently in a program
       });
       if (batchId !== undefined && batchId !== null) {
         params.set("batch_id", String(batchId));
@@ -78,6 +80,7 @@ export function useGetReports(paginationRequest: IPaginationRequest) {
           page: paginationRequest.page,
           page_size: String(paginationRequest.pageSize),
           filter: paginationRequest.filter,
+          in_program: "true", // people who left their program are shown in the exit history
         };
         if (paginationRequest.batchId !== undefined && paginationRequest.batchId !== null) {
           params.batch_id = String(paginationRequest.batchId);
@@ -94,7 +97,6 @@ export function useGetReports(paginationRequest: IPaginationRequest) {
           throw new Error("Failed to fetch reports data");
         }
 
-        console.log("Returning pagination data:", response.data.data);
         return response.data.data;
       } catch (error) {
         console.error("Error fetching reports:", error);
@@ -102,6 +104,8 @@ export function useGetReports(paginationRequest: IPaginationRequest) {
       }
     },
     enabled: true, // Always enabled since paginationRequest is always provided
+    // Keep the current rows on screen while the next page / filter loads
+    placeholderData: keepPreviousData,
     staleTime: 3 * 60 * 1000, // 3 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
   });

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, ArrowLeft, CheckCircle, XCircle } from "lucide-react";
 import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
-import { BASE_URL } from "@/app/lib/api";
+import { isValidImageUrl, resolveImageUrl } from "@/app/lib/image";
 
 export default function QuizAttemptDetailPage() {
   const params = useParams();
@@ -197,9 +197,10 @@ export default function QuizAttemptDetailPage() {
                                         ({opt.optionLetter})
                                       </span>
                                     )}
-                                    {opt.imageUrl && (
+                                    {isValidImageUrl(opt.imageUrl) && (
                                       <Image
-                                        src={BASE_URL + opt.imageUrl}
+                                        src={resolveImageUrl(opt.imageUrl as string)}
+                                        unoptimized
                                         alt="Option Image"
                                         width={200}
                                         height={150}

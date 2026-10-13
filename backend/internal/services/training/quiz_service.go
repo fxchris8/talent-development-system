@@ -1,13 +1,10 @@
 package training
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,20 +16,12 @@ import (
 
 type QuizService struct {
 	log     *logrus.Logger
-	http    *http.Client
-	apiKey  string
-	model   string
+	llm     *LLMClient
 	pubBase string
 	outDir  string
 }
 
-func NewQuizService(log *logrus.Logger, apiKey, model, pubBase string) *QuizService {
-	if apiKey == "" {
-		log.Warn("GEMINI_API_KEY kosong - panggilan LLM akan gagal")
-	}
-	if model == "" {
-		model = "gemini-2.0-flash"
-	}
+func NewQuizService(log *logrus.Logger, llm *LLMClient, pubBase string) *QuizService {
 	if pubBase == "" {
 		pubBase = "http://localhost:8080"
 	}
@@ -42,9 +31,7 @@ func NewQuizService(log *logrus.Logger, apiKey, model, pubBase string) *QuizServ
 
 	return &QuizService{
 		log:     log,
-		http:    &http.Client{Timeout: 180 * time.Second},
-		apiKey:  apiKey,
-		model:   model,
+		llm:     llm,
 		pubBase: strings.TrimRight(pubBase, "/"),
 		outDir:  outDir,
 	}
@@ -70,7 +57,7 @@ func (s *QuizService) GenerateQuizFromMaterial(ctx context.Context, materialCont
 		"competency": competency,
 	}).Info("Starting quiz generation from material")
 
-	questions, err := s.callGeminiForQuiz(ctx, materialContent, topicTitle, competency)
+	questions, err := s.callLLMForQuiz(ctx, materialContent, topicTitle, competency)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate quiz questions: %w", err)
 	}
@@ -90,73 +77,12 @@ func (s *QuizService) GenerateQuizFromMaterial(ctx context.Context, materialCont
 	return publicURL, nil
 }
 
-func (s *QuizService) callGeminiForQuiz(ctx context.Context, materialContent, topicTitle, competency string) ([]QuizQuestion, error) {
+func (s *QuizService) callLLMForQuiz(ctx context.Context, materialContent, topicTitle, competency string) ([]QuizQuestion, error) {
 	prompt := s.buildQuizPrompt(materialContent, topicTitle, competency)
 
-	payload := map[string]interface{}{
-		"contents": []map[string]any{
-			{
-				"parts": []map[string]string{
-					{"text": prompt},
-				},
-			},
-		},
-		"generationConfig": map[string]any{
-			"temperature":      0.7,
-			"maxOutputTokens":  16000,
-			"responseMimeType": "application/json",
-		},
-	}
-
-	body, _ := json.Marshal(payload)
-	apiURL := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", s.model, s.apiKey)
-	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
+	content, err := s.llm.CompleteJSON(ctx, "You are an expert assessment writer. Respond ONLY with valid JSON, no markdown formatting.", prompt, 0.7, 16000)
 	if err != nil {
 		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("gemini API error (status %d): %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	var result struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-
-	if len(result.Candidates) == 0 || len(result.Candidates[0].Content.Parts) == 0 {
-		return nil, errors.New("no response from LLM")
-	}
-
-	content := result.Candidates[0].Content.Parts[0].Text
-	content = strings.TrimSpace(content)
-	
-	if strings.HasPrefix(content, "```json") {
-		content = strings.TrimPrefix(content, "```json")
-		content = strings.TrimSuffix(content, "```")
-		content = strings.TrimSpace(content)
-	} else if strings.HasPrefix(content, "```") {
-		content = strings.TrimPrefix(content, "```")
-		content = strings.TrimSuffix(content, "```")
-		content = strings.TrimSpace(content)
 	}
 
 	var quizResp QuizResponse

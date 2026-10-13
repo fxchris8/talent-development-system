@@ -2,6 +2,7 @@ package main
 
 import (
 	"strconv"
+	"strings"
 
 	"backend/internal/config"
 
@@ -28,6 +29,11 @@ func main() {
 	webPort := viperConfig.GetInt("WEB_PORT")
 
 	if viperConfig.GetString("ENV") == "production" {
+		// Without a secret every login token could be forged; stop with a clear message
+		// instead of running insecurely.
+		if strings.TrimSpace(viperConfig.GetString("JWT_SECRET_KEY")) == "" {
+			log.Fatal("JWT_SECRET_KEY kosong. Isi JWT_SECRET di file .env production lalu jalankan ulang.")
+		}
 		log.Info("ON PRODUCTION ENVIRONTMENT")
 		gin.SetMode(gin.ReleaseMode)
 	}

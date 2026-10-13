@@ -18,7 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import React from "react";
+import React, { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 // Form validation GOES HERE
@@ -36,7 +36,7 @@ const FormSchema = z.object({
 });
 // Form validation END HERE
 
-export default function Page() {
+function PageContent() {
   const loginMutation = useLogin();
   const searchParams = useSearchParams();
 
@@ -144,5 +144,15 @@ export default function Page() {
         </Form>
       </Card>
     </div>
+  );
+}
+
+// useSearchParams() membuat halaman ini bergantung pada URL saat render di client. Tanpa
+// Suspense, `next build` (production) gagal mem-prerender halaman ini dan build berhenti.
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <PageContent />
+    </Suspense>
   );
 }

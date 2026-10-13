@@ -81,6 +81,11 @@ export function useGetAssessmentReport(seafarerCode: string) {
 
         return null;
       } catch (error) {
+        // 404 only means this seafarer has not completed the assessment yet
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        if (status === 404) {
+          return null;
+        }
         console.error("Error fetching assessment report:", error);
         throw error;
       }

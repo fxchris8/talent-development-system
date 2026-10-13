@@ -32,11 +32,7 @@ func NewSeafarerAssessmentController(
 func (controller *SeafarerAssessmentController) FindAll(ctx *gin.Context) {
 	seafarerAssessments, err := controller.SeafarerAssessmentService.FindAll(controller.DB)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -69,11 +65,7 @@ func (controller *SeafarerAssessmentController) FindByID(ctx *gin.Context) {
 			})
 			return
 		}
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -97,11 +89,7 @@ func (controller *SeafarerAssessmentController) FindBySeafarerCode(ctx *gin.Cont
 
 	seafarerAssessments, err := controller.SeafarerAssessmentService.FindBySeafarerCode(controller.DB, seafarerCode)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -126,11 +114,7 @@ func (controller *SeafarerAssessmentController) FindByAssessmentTypeID(ctx *gin.
 
 	seafarerAssessments, err := controller.SeafarerAssessmentService.FindByAssessmentTypeID(controller.DB, assessmentTypeID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -155,11 +139,7 @@ func (controller *SeafarerAssessmentController) Assign(ctx *gin.Context) {
 
 	seafarerAssessment, err := controller.SeafarerAssessmentService.AssignAssessment(controller.DB, &request)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -197,11 +177,7 @@ func (controller *SeafarerAssessmentController) UpdateStatus(ctx *gin.Context) {
 
 	seafarerAssessment, err := controller.SeafarerAssessmentService.UpdateStatus(controller.DB, &request)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -226,11 +202,7 @@ func (controller *SeafarerAssessmentController) Delete(ctx *gin.Context) {
 
 	err = controller.SeafarerAssessmentService.Delete(controller.DB, seafarerAssessmentID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -266,11 +238,7 @@ func (controller *SeafarerAssessmentController) CheckAssignment(ctx *gin.Context
 
 	result, err := controller.SeafarerAssessmentService.CheckAssignment(controller.DB, seafarerCode, assessmentTypeID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -325,11 +293,7 @@ func (controller *SeafarerAssessmentController) CheckAssignmentWithRole(ctx *gin
 
 	result, err := controller.SeafarerAssessmentService.CheckAssignmentWithRole(controller.DB, seafarerCode, assessmentTypeID, role)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -363,11 +327,7 @@ func (controller *SeafarerAssessmentController) IncrementAttempts(ctx *gin.Conte
 
 	result, err := controller.SeafarerAssessmentService.IncrementAttempts(controller.DB, seafarerCode, assessmentTypeID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 

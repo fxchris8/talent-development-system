@@ -14,6 +14,9 @@ func NewViper() *viper.Viper {
 	config.SetDefault("DB_PORT", "3306")
 	config.SetDefault("WEB_PORT", 8080)
 	config.SetDefault("ENV", "development")
+	// logrus levels: 2=error 3=warn 4=info 5=debug. Without a default an unset LOG_LEVEL means 0
+	// (panic only) and every log line, including startup errors, is silently dropped.
+	config.SetDefault("LOG_LEVEL", 4)
 	config.SetDefault("SSO_BASE_URL", "")
 	config.SetDefault("SSO_FRONTEND_URL", "")
 	config.SetDefault("SSO_CLIENT_ID", "")

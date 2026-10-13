@@ -18,5 +18,7 @@ RUN npm ci
 # Expose port
 EXPOSE 3000
 
-# Development server with hot reload
-CMD ["npm", "run", "dev"]
+# Development server with hot reload.
+# Turbopack does not notice file changes on a Windows/macOS bind mount, so inside Docker the
+# webpack dev server is used: it honours WATCHPACK_POLLING (set in docker-compose.yml).
+CMD ["npx", "next", "dev", "--webpack"]

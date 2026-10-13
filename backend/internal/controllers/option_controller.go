@@ -35,11 +35,7 @@ func (controller *OptionController) Create(ctx *gin.Context) {
 
 	optionData, err := controller.OptionService.Create(controller.DB, &request)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -53,11 +49,7 @@ func (controller *OptionController) Create(ctx *gin.Context) {
 func (controller *OptionController) FindAll(ctx *gin.Context) {
 	optionDataList, err := controller.OptionService.FindAll(controller.DB)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -111,11 +103,7 @@ func (controller *OptionController) FindByQuestionId(ctx *gin.Context) {
 
 	optionDataList, err := controller.OptionService.FindByQuestionId(controller.DB, questionId)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -139,11 +127,7 @@ func (controller *OptionController) Update(ctx *gin.Context) {
 
 	optionData, err := controller.OptionService.Update(controller.DB, &request)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -168,11 +152,7 @@ func (controller *OptionController) Delete(ctx *gin.Context) {
 
 	err = controller.OptionService.Delete(controller.DB, optionId)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 

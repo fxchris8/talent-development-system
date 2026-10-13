@@ -12,7 +12,7 @@ import Image from "next/image";
 import { useCountdown } from "@/hooks/use-session-storage";
 import { useTimerPauseResume } from "@/hooks/useTimerPauseResume";
 import { useStorageCountdown } from "@/hooks/use-local-storage";
-import { BASE_URL } from "@/app/lib/api";
+import { isValidImageUrl, resolveImageUrl } from "@/app/lib/image";
 
 interface Section3Props {
   onNext: () => void;
@@ -367,12 +367,14 @@ export default function Section3({
 
                 {/* Question Statement */}
                 <div className="mb-8 p-6 bg-gray-50 rounded-lg border-l-4 border-blue-400 flex flex-col gap-2">
-                  {currentQuestion?.isImage === 1 && (
+                  {currentQuestion?.isImage === 1 && isValidImageUrl(currentQuestion?.imageUrl) && (
                     <Image
-                      src={BASE_URL + currentQuestion?.imageUrl}
+                      src={resolveImageUrl(currentQuestion?.imageUrl as string)}
+                      unoptimized
                       width={300}
                       height={200}
                       alt={"Gambar " + currentQuestionIndex}
+                      className="h-auto max-w-full rounded object-contain"
                     />
                   )}
                   <p className="text-lg text-gray-800 leading-relaxed">
