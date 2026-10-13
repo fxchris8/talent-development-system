@@ -1460,16 +1460,48 @@ func (s *trainingPlanService) ToggleTrainingStarted(id int, isStarted bool, apol
 	return s.trainingScheduleRepo.UpdateIsStarted(id, isStarted)
 }
 
-// GetOverdueUnstartedCount returns count of trainings that are overdue (scheduled_date < today) and not started yet
+// scheduleWeekEnd returns the first calendar day after the week slot of a scheduled date.
+// A month has four slots starting on day 1, 8, 15 and 22 (same rule as the timeline UI).
+func scheduleWeekEnd(scheduled time.Time) time.Time {
+	y, m, d := scheduled.Date()
+	switch {
+	case d <= 7:
+		return time.Date(y, m, 8, 0, 0, 0, 0, time.UTC)
+	case d <= 14:
+		return time.Date(y, m, 15, 0, 0, 0, 0, time.UTC)
+	case d <= 21:
+		return time.Date(y, m, 22, 0, 0, 0, 0, time.UTC)
+	}
+	return time.Date(y, m+1, 1, 0, 0, 0, 0, time.UTC)
+}
+
+// isSchedulePostponed reports whether the whole week of a scheduled training has passed.
+// `today` is a calendar day (only its year/month/day are used).
+func isSchedulePostponed(scheduled, today time.Time) bool {
+	ty, tm, td := today.Date()
+	todayDay := time.Date(ty, tm, td, 0, 0, 0, 0, time.UTC)
+	return !scheduleWeekEnd(scheduled.UTC()).After(todayDay)
+}
+
+// GetOverdueUnstartedCount returns the number of trainings whose week has passed without
+// being started. It matches the "Tertunda" block of the training plan timeline.
 func (s *trainingPlanService) GetOverdueUnstartedCount(program string) (int, error) {
-	var count int64
+	var dates []time.Time
 	err := s.db.Model(&domain.TrainingSchedule{}).
-		Where("program = ? AND is_started = false AND scheduled_date < CURDATE()", program).
-		Count(&count).Error
+		Where("program = ? AND is_started = false AND scheduled_date < ?", program, time.Now().Add(24*time.Hour)).
+		Pluck("scheduled_date", &dates).Error
 
 	if err != nil {
 		s.log.WithError(err).WithField("program", program).Error("Failed to get overdue unstarted count")
 		return 0, err
+	}
+
+	today := time.Now().In(jakartaLocation())
+	count := 0
+	for _, d := range dates {
+		if isSchedulePostponed(d, today) {
+			count++
+		}
 	}
 
 	s.log.WithFields(logrus.Fields{
@@ -1477,5 +1509,5 @@ func (s *trainingPlanService) GetOverdueUnstartedCount(program string) (int, err
 		"count":   count,
 	}).Info("Retrieved overdue unstarted training count")
 
-	return int(count), nil
+	return count, nil
 }

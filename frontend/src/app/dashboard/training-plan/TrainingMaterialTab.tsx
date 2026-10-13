@@ -29,7 +29,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FileText, RefreshCw, Edit, Trash2, Search } from "lucide-react";
+import { authFetch } from "../../lib/auth-fetch";
+import { useNarrationPlayer } from "./_hooks/useNarrationPlayer";
+import { formatNarrationTime } from "./_hooks/narrationTime";
+import { FileText, RefreshCw, Edit, Trash2, Search, Volume2, Square } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 interface ITraining {
@@ -112,6 +115,8 @@ export default function TrainingMaterialTab() {
       ? process.env.INTERNAL_API_ENDPOINT
       : process.env.NEXT_PUBLIC_API_ENDPOINT;
 
+  const narration = useNarrationPlayer(apiUrl ?? "", (message) => toast.error(message));
+
   useEffect(() => {
     const fetchTrainings = async () => {
       try {
@@ -190,6 +195,15 @@ export default function TrainingMaterialTab() {
   }, [searchTerm, filteredGroupedData]);
 
   const handleGenerate = async (item: ITraining, isRegenerate = false) => {
+    // The material is written about the topic, so a training without one cannot be generated.
+    if (!item.topik_training?.trim()) {
+      setRegenerateDialog(null);
+      toast.error(
+        "Training ini belum punya topik. Isi Topik Training lewat tombol edit, lalu generate lagi."
+      );
+      return;
+    }
+
     setGenerating(item.no);
     setRegenerateDialog(null);
 
@@ -209,7 +223,7 @@ export default function TrainingMaterialTab() {
           : referensiToUse;
       }
 
-      const res = await fetch(`${apiUrl}/trainings/generate`, {
+      const res = await authFetch(`${apiUrl}/trainings/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -272,7 +286,7 @@ export default function TrainingMaterialTab() {
           : item.referensi;
       }
 
-      const res = await fetch(`${apiUrl}/trainings/generate-quiz`, {
+      const res = await authFetch(`${apiUrl}/trainings/generate-quiz`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -338,7 +352,7 @@ export default function TrainingMaterialTab() {
     const currentExpandedGroups = [...expandedGroups];
 
     try {
-      const res = await fetch(`${apiUrl}/trainings`, {
+      const res = await authFetch(`${apiUrl}/trainings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(createForm),
@@ -387,7 +401,7 @@ yaitu slide 1: judul, slide 2: objective, slide 3: konsep penjelasan detail topi
 
     try {
       // Save referensi to database via API
-      const res = await fetch(`${apiUrl}/trainings/${selectedTraining.no}/referensi`, {
+      const res = await authFetch(`${apiUrl}/trainings/${selectedTraining.no}/referensi`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ referensi: tempReferensi }),
@@ -438,7 +452,7 @@ yaitu slide 1: judul, slide 2: objective, slide 3: konsep penjelasan detail topi
     const currentExpandedGroups = [...expandedGroups];
 
     try {
-      const res = await fetch(`${apiUrl}/trainings/${editingTraining.no}`, {
+      const res = await authFetch(`${apiUrl}/trainings/${editingTraining.no}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -484,7 +498,7 @@ yaitu slide 1: judul, slide 2: objective, slide 3: konsep penjelasan detail topi
     const currentExpandedGroups = [...expandedGroups];
 
     try {
-      const res = await fetch(`${apiUrl}/trainings/${deletingTraining.no}`, {
+      const res = await authFetch(`${apiUrl}/trainings/${deletingTraining.no}`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
@@ -580,29 +594,28 @@ yaitu slide 1: judul, slide 2: objective, slide 3: konsep penjelasan detail topi
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b bg-gray-50">
-                            <th className="py-3 px-4 text-left font-semibold">Level</th>
-                            <th className="py-3 px-4 text-left font-semibold">Kode</th>
-                            <th className="py-3 px-4 text-left font-semibold">Topik Training</th>
-                            <th className="py-3 px-4 text-left font-semibold">Tools/Framework</th>
-                            <th className="py-3 px-4 text-center font-semibold">Referensi</th>
-                            <th className="py-3 px-4 text-center font-semibold">Material</th>
-                            <th className="py-3 px-4 text-center font-semibold">Quiz</th>
-                            <th className="py-3 px-4 text-center font-semibold">Files</th>
-                            <th className="py-3 px-4 text-center font-semibold">Actions</th>
+                            <th className="py-3 px-3 text-left font-semibold">Level</th>
+                            <th className="py-3 px-3 text-left font-semibold">Kode</th>
+                            <th className="py-3 px-3 text-left font-semibold">Topik Training</th>
+                            <th className="py-3 px-3 text-left font-semibold">Tools/Framework</th>
+                            <th className="py-3 px-3 text-center font-semibold">Referensi</th>
+                            <th className="py-3 px-3 text-center font-semibold">Generate</th>
+                            <th className="py-3 px-3 text-center font-semibold">Files</th>
+                            <th className="py-3 px-3 text-center font-semibold">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {group.trainings.map((item) => (
                             <tr key={item.no} className="border-b hover:bg-gray-50">
-                              <td className="py-3 px-4">
+                              <td className="py-3 px-3">
                                 <span className="inline-flex items-center justify-center w-8 h-8 bg-gray-200 rounded-full font-semibold text-sm">
                                   {item.lvl}
                                 </span>
                               </td>
-                              <td className="py-3 px-4 font-medium">{item.kode}</td>
-                              <td className="py-3 px-4">{item.topik_training}</td>
-                              <td className="py-3 px-4 text-gray-600">{item.tools_training}</td>
-                              <td className="py-3 px-4 text-center">
+                              <td className="py-3 px-3 font-medium">{item.kode}</td>
+                              <td className="py-3 px-3">{item.topik_training}</td>
+                              <td className="py-3 px-3 text-gray-600">{item.tools_training}</td>
+                              <td className="py-3 px-3 text-center">
                                 <Button
                                   variant="secondary"
                                   size="sm"
@@ -617,50 +630,96 @@ yaitu slide 1: judul, slide 2: objective, slide 3: konsep penjelasan detail topi
                                   {item.referensi ? "Edit" : "Tambah"}
                                 </Button>
                               </td>
-                              <td className="py-3 px-4 text-center">
-                                {item.generated_file_url || item.generated_pdf_url ? (
+                              <td className="py-3 px-3 text-center">
+                                <div className="flex flex-wrap items-center justify-center gap-1.5">
+                                  {item.generated_file_url || item.generated_pdf_url ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => openRegenerateDialog(item)}
+                                      disabled={generating === item.no}
+                                      className="gap-2"
+                                    >
+                                      <RefreshCw className="w-4 h-4" />
+                                      {generating === item.no ? "Regenerating..." : "Regenerate"}
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleGenerate(item, false)}
+                                      disabled={generating === item.no}
+                                    >
+                                      {generating === item.no ? "Generating..." : "Generate"}
+                                    </Button>
+                                  )}
                                   <Button
                                     size="sm"
-                                    variant="outline"
-                                    onClick={() => openRegenerateDialog(item)}
-                                    disabled={generating === item.no}
+                                    title="Generate quiz dari materi (butuh PDF)"
+                                    variant={item.generated_quiz_url ? "outline" : "default"}
+                                    onClick={() => handleGenerateQuiz(item)}
+                                    disabled={generatingQuiz === item.no || !item.generated_pdf_url}
                                     className="gap-2"
                                   >
-                                    <RefreshCw className="w-4 h-4" />
-                                    {generating === item.no ? "Regenerating..." : "Regenerate"}
+                                    {generatingQuiz === item.no ? (
+                                      "Generating..."
+                                    ) : item.generated_quiz_url ? (
+                                      <>
+                                        <RefreshCw className="w-4 h-4" />
+                                        Quiz
+                                      </>
+                                    ) : (
+                                      "Quiz"
+                                    )}
                                   </Button>
-                                ) : (
                                   <Button
                                     size="sm"
-                                    onClick={() => handleGenerate(item, false)}
-                                    disabled={generating === item.no}
+                                    title={
+                                      narration.loadingNo === item.no
+                                        ? "Suara sedang dibuat, klik untuk membatalkan"
+                                        : "Dengarkan narasi materi (Bahasa Indonesia)"
+                                    }
+                                    variant={
+                                      narration.playingNo === item.no ? "destructive" : "outline"
+                                    }
+                                    onClick={() =>
+                                      item.generated_file_url &&
+                                      narration.toggle(item.no, item.generated_file_url)
+                                    }
+                                    disabled={!item.generated_file_url}
+                                    className="gap-2"
                                   >
-                                    {generating === item.no ? "Generating..." : "Generate"}
+                                    {narration.loadingNo === item.no ? (
+                                      <>
+                                        <RefreshCw className="w-4 h-4 animate-spin" />
+                                        Menyiapkan suara...
+                                      </>
+                                    ) : narration.playingNo === item.no ? (
+                                      <>
+                                        <Square className="w-4 h-4" />
+                                        Stop
+                                        {narration.progress &&
+                                          ` (${formatNarrationTime(narration.progress.current)}${
+                                            narration.progress.duration
+                                              ? ` / ${formatNarrationTime(narration.progress.duration)}`
+                                              : ""
+                                          })`}
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Volume2 className="w-4 h-4" />
+                                        Dengarkan
+                                      </>
+                                    )}
                                   </Button>
-                                )}
+                                </div>
                               </td>
-                              <td className="py-3 px-4 text-center">
-                                <Button
-                                  size="sm"
-                                  variant={item.generated_quiz_url ? "outline" : "default"}
-                                  onClick={() => handleGenerateQuiz(item)}
-                                  disabled={generatingQuiz === item.no || !item.generated_pdf_url}
-                                  className="gap-2"
-                                >
-                                  {generatingQuiz === item.no ? (
-                                    "Generating..."
-                                  ) : item.generated_quiz_url ? (
-                                    <>
-                                      <RefreshCw className="w-4 h-4" />
-                                      Regenerate Quiz
-                                    </>
-                                  ) : (
-                                    "Generate Quiz"
-                                  )}
-                                </Button>
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <div className="flex gap-2 justify-center">
+                              <td className="py-3 px-3 text-center">
+                                <div className="flex flex-wrap gap-1.5 justify-center">
+                                  {!item.generated_file_url &&
+                                    !item.generated_pdf_url &&
+                                    !item.generated_quiz_url && (
+                                      <span className="text-gray-400 text-sm">Belum ada</span>
+                                    )}
                                   {item.generated_file_url ? (
                                     <Button
                                       asChild
@@ -678,9 +737,7 @@ yaitu slide 1: judul, slide 2: objective, slide 3: konsep penjelasan detail topi
                                         PPT
                                       </a>
                                     </Button>
-                                  ) : (
-                                    <span className="text-gray-400 text-sm">No PPT</span>
-                                  )}
+                                  ) : null}
                                   {item.generated_pdf_url ? (
                                     <Button
                                       asChild
@@ -698,9 +755,7 @@ yaitu slide 1: judul, slide 2: objective, slide 3: konsep penjelasan detail topi
                                         PDF
                                       </a>
                                     </Button>
-                                  ) : (
-                                    <span className="text-gray-400 text-sm">No PDF</span>
-                                  )}
+                                  ) : null}
                                   {item.generated_quiz_url ? (
                                     <Button
                                       asChild
@@ -718,12 +773,10 @@ yaitu slide 1: judul, slide 2: objective, slide 3: konsep penjelasan detail topi
                                         Quiz
                                       </a>
                                     </Button>
-                                  ) : (
-                                    <span className="text-gray-400 text-sm">No Quiz</span>
-                                  )}
+                                  ) : null}
                                 </div>
                               </td>
-                              <td className="py-3 px-4 text-center">
+                              <td className="py-3 px-3 text-center">
                                 <div className="flex gap-2 justify-center">
                                   <Button
                                     variant="ghost"

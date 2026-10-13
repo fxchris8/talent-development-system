@@ -3,7 +3,8 @@ package controllers
 import (
 	"fmt"
 	"net/http"
-	"os"
+	"strconv"
+	"strings"
 
 	"backend/internal/middlewares"
 	"backend/internal/models/domain"
@@ -15,16 +16,18 @@ import (
 )
 
 type UserController struct {
-	Log        *logrus.Logger
-	Service    *services.UserService
-	SSOService *services.SSOService
+	Log          *logrus.Logger
+	Service      *services.UserService
+	SSOService   *services.SSOService
+	LoginLimiter *middlewares.LoginLimiter
 }
 
 func NewUserController(service *services.UserService, ssoService *services.SSOService, log *logrus.Logger) *UserController {
 	return &UserController{
-		Log:        log,
-		Service:    service,
-		SSOService: ssoService,
+		Log:          log,
+		Service:      service,
+		SSOService:   ssoService,
+		LoginLimiter: middlewares.NewLoginLimiter(),
 	}
 }
 
@@ -42,30 +45,46 @@ func (c *UserController) Login(ctx *gin.Context) {
 		return
 	}
 
-	// TODO: Find the user by username
-	var user domain.User
-	err := c.Service.UserReporsitory.FindByUsername(c.Service.DB, &user, request.Username)
-	if err != nil {
-		ctx.JSON(http.StatusNotFound, web.ErrorResponse{
-			Code:   http.StatusNotFound,
-			Status: "Not Found",
-			Error:  "Username not found",
+	clientIP := ctx.ClientIP()
+	if wait := c.LoginLimiter.RetryAfter(clientIP, request.Username); wait > 0 {
+		minutes := int(wait.Minutes()) + 1
+		ctx.Header("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		ctx.JSON(http.StatusTooManyRequests, web.ErrorResponse{
+			Code:   http.StatusTooManyRequests,
+			Status: "Too Many Requests",
+			Error:  fmt.Sprintf("Terlalu banyak percobaan login. Coba lagi dalam %d menit.", minutes),
 		})
 		ctx.Abort()
 		return
 	}
 
-	// TODO: Login
-	response, err := c.Service.Login(&user, request.Password)
-	if err != nil {
+	// An unknown username and a wrong password get the same answer, so the login form
+	// cannot be used to find out which usernames exist.
+	rejectLogin := func() {
+		c.LoginLimiter.Fail(clientIP, request.Username)
 		ctx.JSON(http.StatusBadRequest, web.ErrorResponse{
 			Code:   http.StatusBadRequest,
 			Status: "Bad Request",
 			Error:  "Invalid username or password",
 		})
 		ctx.Abort()
+	}
+
+	// TODO: Find the user by username
+	var user domain.User
+	err := c.Service.UserReporsitory.FindByUsername(c.Service.DB, &user, request.Username)
+	if err != nil {
+		rejectLogin()
 		return
 	}
+
+	// TODO: Login
+	response, err := c.Service.Login(&user, request.Password)
+	if err != nil {
+		rejectLogin()
+		return
+	}
+	c.LoginLimiter.Success(clientIP, request.Username)
 
 	// TODO: Create Access Token
 	tokenString, err := c.Service.CreateAccessToken(&user)
@@ -79,11 +98,11 @@ func (c *UserController) Login(ctx *gin.Context) {
 		return
 	}
 
-	// TODO: Create HTTP Only Cookie (optional, frontend will handle it)
-	// In production with HTTPS, use secure=true
-	isProduction := os.Getenv("ENV") == "production"
+	// HTTP Only Cookie. A Secure cookie is dropped by the browser on plain HTTP, so it is
+	// only marked Secure when this request arrived over HTTPS (directly or via a proxy);
+	// tying it to ENV=production broke login on servers reached over http://.
 	ctx.SetSameSite(http.SameSiteLaxMode) // Changed from None to Lax for same-site
-	ctx.SetCookie(middlewares.TOKEN_COOKIE, tokenString, 3600*6, "/", "", isProduction, true)
+	ctx.SetCookie(middlewares.TOKEN_COOKIE, tokenString, 3600*6, "/", "", requestIsHTTPS(ctx), true)
 
 	// Send token in response body for frontend to store
 	userData := response.Data.(web.UserData)
@@ -312,4 +331,13 @@ func (c *UserController) DeleteUser(ctx *gin.Context) {
 		Status: "User deleted successfully",
 		Data:   nil,
 	})
+}
+
+// requestIsHTTPS reports whether the client reached the API over HTTPS, either directly or
+// through a reverse proxy that terminates TLS.
+func requestIsHTTPS(ctx *gin.Context) bool {
+	if ctx.Request.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(ctx.GetHeader("X-Forwarded-Proto")), "https")
 }

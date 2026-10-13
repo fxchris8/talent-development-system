@@ -6,6 +6,40 @@ type IDPCountData struct {
 	MDP int `json:"mdp"`
 	FDP int `json:"fdp"`
 	SDP int `json:"sdp"`
+	// Total counts every report matching the batch/search filter, including people without a program.
+	Total int `json:"total"`
+}
+
+// ProgramExit is one row of the "left the program" history: who was promoted out of which
+// IDP program, from which rank to which rank, and when.
+type ProgramExit struct {
+	ReportID        int        `json:"reportId"`
+	SeafarerCode    string     `json:"seafarerCode"`
+	Nama            string     `json:"nama"`
+	ExitedProgram   string     `json:"exitedProgram"`
+	FromPosition    string     `json:"fromPosition"`    // rank held while in the program ("" when unknown)
+	ToPosition      string     `json:"toPosition"`      // rank they were promoted to
+	CurrentPosition string     `json:"currentPosition"` // rank today
+	VesselName      string     `json:"vesselName"`
+	PromotedAt      *time.Time `json:"promotedAt"` // date of the promotion in CITRIX
+	ExitedAt        *time.Time `json:"exitedAt"`   // when the system took them out of the program
+	// Reason is why the person is no longer an active participant:
+	//   "completed" - finished every training of the program (a graduate)
+	//   "promoted"  - promoted before finishing
+	Reason      string     `json:"reason"`
+	Promoted    bool       `json:"promoted"`    // has (also) been promoted out of the program
+	CompletedAt *time.Time `json:"completedAt"` // when the program was finished, if known
+}
+
+// ReportIdentity is what the public seafarer lookup returns: enough to confirm the person,
+// nothing from the talent profile.
+type ReportIdentity struct {
+	ID           int    `json:"id"`
+	SeamanCode   string `json:"seamanCode"`
+	SeafarerCode string `json:"seafarerCode"`
+	Nama         string `json:"nama"`
+	Jabatan      string `json:"jabatan"`
+	VesselName   string `json:"vesselName"`
 }
 
 type ReportData struct {
@@ -44,6 +78,8 @@ type ReportData struct {
 	Strength              string `json:"strength" gorm:"column:strength"`
 	TalentClassified      string `json:"talentClassified" gorm:"column:talent_classified"`
 	IDPProgram            string `json:"idpProgram" gorm:"column:idp_program"`
+	TrainingStatus        string `json:"trainingStatus" gorm:"column:training_status"`
+	ExitedProgram         string `json:"exitedProgram" gorm:"column:exited_program"`
 	HavQuadran2           int    `json:"havQuadran2" gorm:"column:hav_quadran2"`
 	TalentClassified2     string `json:"talentClassified2" gorm:"column:talent_classified2"`
 	Readiness             string `json:"readiness" gorm:"column:readiness"`

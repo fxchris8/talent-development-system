@@ -2,6 +2,7 @@ version: "3.8"
 
 volumes:
   backend_storage:
+  backend_materi:
 
 services:
   tds_backend:
@@ -22,9 +23,40 @@ services:
       WEB_PORT: 8080
       ENV: production
       GIN_MODE: release
+      # Jadwal cron (sync CITRIX, readiness) dan perhitungan "hari ini" mengikuti WIB
+      TZ: Asia/Jakarta
+      # 2=error 3=warn 4=info 5=debug
+      LOG_LEVEL: ${LOG_LEVEL:-4}
+
+      # URL publik: dipakai untuk link file PPT/PDF yang disimpan ke database dan
+      # redirect setelah login SSO. WAJIB diisi, kalau kosong link mengarah ke localhost.
+      BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-${NEXT_PUBLIC_API_ENDPOINT:-http://localhost:8080}}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      # Origin tambahan yang boleh memanggil API (pisahkan dengan koma), opsional
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      # Seeder: auto = hanya mengisi tabel yang masih kosong (aman untuk production)
+      SEED_ON_START: ${SEED_ON_START:-auto}
+
+      # SSO (kosongkan semuanya bila tidak memakai SSO)
+      SSO_BASE_URL: ${SSO_BASE_URL:-}
+      SSO_FRONTEND_URL: ${SSO_FRONTEND_URL:-}
+      SSO_CLIENT_ID: ${SSO_CLIENT_ID:-}
+      SSO_CLIENT_SECRET: ${SSO_CLIENT_SECRET:-}
+      SSO_CALLBACK_URL: ${SSO_CALLBACK_URL:-}
+
+      # Layanan suara materi (container tds_tts di bawah)
+      TTS_URL: http://tds_tts:5002
+
+      # API Apollo (riwayat training); kosong = default di kode
+      APOLLO_API_BASE_URL: ${APOLLO_API_BASE_URL:-}
 
       # Security
       JWT_SECRET_KEY: ${JWT_SECRET}
+      # AI generator (LLM via OpenRouter: materi PPT/PDF, quiz)
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-}
 
       # LLM API (if using)
       GROQ_API_KEY: ${GROQ_API_KEY}
@@ -32,6 +64,8 @@ services:
       - "8080:8080"
     volumes:
       - backend_storage:/app/storage
+      # Materi PPT/PDF hasil generate; tanpa volume ini file hilang setiap redeploy
+      - backend_materi:/app/public/materi
       # NOTE: NO bind mount untuk source code di production!
     networks:
       - tds-net
@@ -42,6 +76,16 @@ services:
       retries: 3
       start_period: 40s
 
+  # Suara materi training: mesin text-to-speech neural (Piper) berbahasa Indonesia, offline
+  tds_tts:
+    container_name: tds_tts_prod
+    build:
+      context: ./tts
+      dockerfile: Dockerfile
+    restart: always
+    networks:
+      - tds-net
+
   tds_frontend:
     container_name: tds_frontend_prod
     build:
@@ -49,10 +93,14 @@ services:
       dockerfile: Dockerfile.prod
       args:
         NEXT_PUBLIC_API_ENDPOINT: ${NEXT_PUBLIC_API_ENDPOINT:-http://localhost:8080}
+        NEXT_PUBLIC_SSO_CLIENT_ID: ${SSO_CLIENT_ID:-}
     restart: always
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_ENDPOINT: ${NEXT_PUBLIC_API_ENDPOINT:-http://localhost:8080}
+      # Harus SAMA dengan JWT_SECRET_KEY backend: dipakai untuk memeriksa cookie login di
+      # halaman terproteksi. Kalau kosong/berbeda, semua user dilempar balik ke /login.
+      JWT_SECRET: ${JWT_SECRET}
     ports:
       - "3000:3000"
     # NOTE: NO volumes/bind mount untuk source code di production!

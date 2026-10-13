@@ -18,7 +18,7 @@ import { useCheckAssessmentTypeStatus } from "@/app/value-assessment/_hooks/useA
 import Image from "next/image";
 import Greetings from "./greetings";
 import Completion from "./completion";
-import { BASE_URL } from "@/app/lib/api";
+import { isValidImageUrl, resolveImageUrl } from "@/app/lib/image";
 import { TutorialDisplay } from "@/components/tutorial-display";
 
 export default function QuizPage() {
@@ -782,10 +782,11 @@ export default function QuizPage() {
                 </div>
 
                 <div className="text-gray-700 text-lg leading-relaxed mb-6">
-                  {currentQuestion?.imageUrl && currentQuestion.imageUrl !== "" && (
+                  {isValidImageUrl(currentQuestion?.imageUrl) && (
                     <div className="mb-4">
                       <Image
-                        src={BASE_URL + currentQuestion.imageUrl}
+                        src={resolveImageUrl(currentQuestion?.imageUrl as string)}
+                        unoptimized
                         width={400}
                         height={300}
                         alt={`Gambar soal ${currentQuestionIndex + 1}`}
@@ -839,9 +840,10 @@ export default function QuizPage() {
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="flex flex-col gap-2">
-                              {option.imageUrl && option.imageUrl !== "" && (
+                              {isValidImageUrl(option.imageUrl) && (
                                 <Image
-                                  src={BASE_URL + option.imageUrl}
+                                  src={resolveImageUrl(option.imageUrl as string)}
+                                  unoptimized
                                   width={200}
                                   height={150}
                                   alt={`Opsi ${option.optionText}`}
@@ -894,9 +896,10 @@ export default function QuizPage() {
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="flex flex-col gap-2">
-                              {option.imageUrl && option.imageUrl !== "" && (
+                              {isValidImageUrl(option.imageUrl) && (
                                 <Image
-                                  src={BASE_URL + option.imageUrl}
+                                  src={resolveImageUrl(option.imageUrl as string)}
+                                  unoptimized
                                   width={200}
                                   height={150}
                                   alt={`Opsi ${option.optionText}`}

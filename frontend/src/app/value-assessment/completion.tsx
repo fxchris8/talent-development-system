@@ -29,7 +29,7 @@ export default function Completion({ assessmentData, clearStoredData }: Completi
               height={64}
               src="/images/logo1.png"
               alt="Logo Kiri"
-              className="h-16"
+              className="h-16 w-auto"
             />
             <div className="text-center">
               <h1 className="text-3xl font-bold uppercase text-gray-800 mb-2">Value Assessment</h1>
@@ -39,7 +39,7 @@ export default function Completion({ assessmentData, clearStoredData }: Completi
               height={64}
               src="/images/logo2.png"
               alt="Logo Kanan"
-              className="h-16"
+              className="h-16 w-auto"
             />
           </div>
         </div>

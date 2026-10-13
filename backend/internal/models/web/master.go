@@ -54,6 +54,8 @@ type MasterReportData struct {
 	Strength                   string               `json:"strength"`
 	TalentClassified           string               `json:"talentClassified"`
 	IDPProgram                 string               `json:"idpProgram"`
+	TrainingStatus             string               `json:"trainingStatus"`
+	ExitedProgram              string               `json:"exitedProgram"`
 	HavQuadran2                int                  `json:"havQuadran2"`
 	TalentClassified2          string               `json:"talentClassified2"`
 	Readiness                  string               `json:"readiness"`

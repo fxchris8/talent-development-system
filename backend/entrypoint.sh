@@ -17,7 +17,12 @@ echo "✅ MySQL is ready!"
 
 # Run migrations
 echo "Running database migrations..."
-./migrate 2>&1 || echo "⚠️  Warning during migration (likely just .env not found warning)"
+# A failed migration must stop the container: starting the API on a half-migrated schema
+# hides the real error behind confusing runtime failures.
+if ! ./migrate 2>&1; then
+  echo "❌ Migration failed. The API is not started; fix the error above and restart."
+  exit 1
+fi
 echo "✅ Migrations completed"
 
 # Run seeder (optional, comment out if not needed every time)

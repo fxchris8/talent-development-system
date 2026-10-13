@@ -2,13 +2,10 @@ package training
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,26 +14,17 @@ import (
 
 	"github.com/AlexGames73/unioffice-free/measurement"
 	"github.com/AlexGames73/unioffice-free/presentation"
-	"github.com/jung-kurt/gofpdf"
 	"github.com/sirupsen/logrus"
 )
 
 type Service struct {
 	log     *logrus.Logger
-	http    *http.Client
-	apiKey  string
-	model   string
+	llm     jsonCompleter
 	pubBase string
 	outDir  string
 }
 
-func NewTrainingService(log *logrus.Logger, apiKey, model, pubBase string) *Service {
-	if apiKey == "" {
-		log.Warn("GEMINI_API_KEY kosong - panggilan LLM akan gagal")
-	}
-	if model == "" {
-		model = "gemini-2.0-flash"
-	}
+func NewTrainingService(log *logrus.Logger, llm *LLMClient, pubBase string) *Service {
 	if pubBase == "" {
 		pubBase = "http://localhost:8080"
 	}
@@ -44,14 +32,15 @@ func NewTrainingService(log *logrus.Logger, apiKey, model, pubBase string) *Serv
 	outDir := "./public/materi"
 	_ = os.MkdirAll(outDir, 0o755)
 
-	return &Service{
+	svc := &Service{
 		log:     log,
-		http:    &http.Client{Timeout: 180 * time.Second},
-		apiKey:  apiKey,
-		model:   model,
 		pubBase: strings.TrimRight(pubBase, "/"),
 		outDir:  outDir,
 	}
+	if llm != nil { // jangan simpan nil pointer di dalam interface
+		svc.llm = llm
+	}
+	return svc
 }
 
 type GenerateInput struct {
@@ -98,61 +87,6 @@ type QA struct {
 	Answer   string `json:"answer"`
 }
 
-// DetailedContent represents the comprehensive learning guide structure
-type DetailedContent struct {
-	Title           string                `json:"title"`
-	Introduction    string                `json:"introduction"`
-	Sections        []DetailedSection     `json:"sections"`
-	PracticalGuide  PracticalGuide        `json:"practical_guide"`
-	CaseStudies     []DetailedCaseStudy   `json:"case_studies"`
-	FAQ             []DetailedFAQ         `json:"faq"`
-	Resources       ResourceSection       `json:"resources"`
-	Conclusion      string                `json:"conclusion"`
-}
-
-type DetailedSection struct {
-	Title       string   `json:"title"`
-	Content     string   `json:"content"`      // Super lengkap, 500-1000 kata per section
-	KeyPoints   []string `json:"key_points"`
-	Examples    []string `json:"examples"`
-	Exercises   string   `json:"exercises"`
-}
-
-type PracticalGuide struct {
-	StepByStep  []PracticalStep `json:"step_by_step"`
-	Tips        []string        `json:"tips"`
-	CommonPitfalls []string     `json:"common_pitfalls"`
-}
-
-type PracticalStep struct {
-	StepNumber  int      `json:"step_number"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`   // Detail lengkap
-	Examples    []string `json:"examples"`
-}
-
-type DetailedCaseStudy struct {
-	Title       string   `json:"title"`
-	Context     string   `json:"context"`
-	Challenge   string   `json:"challenge"`
-	Solution    string   `json:"solution"`
-	Outcome     string   `json:"outcome"`
-	Lessons     []string `json:"lessons"`
-}
-
-type DetailedFAQ struct {
-	Question string `json:"question"`
-	Answer   string `json:"answer"`  // Jawaban super detail dan lengkap
-}
-
-type ResourceSection struct {
-	Books       []string `json:"books"`
-	Articles    []string `json:"articles"`
-	Videos      []string `json:"videos"`
-	Tools       []string `json:"tools"`
-	Additional  []string `json:"additional"`
-}
-
 func (s *Service) buildPrompt(in GenerateInput) string {
 	topicType := s.determineTopicType(in.TopikTraining, in.Tools)
 
@@ -163,8 +97,6 @@ func (s *Service) buildPrompt(in GenerateInput) string {
 	contentRequirements := s.buildContentRequirements()
 	
 	basePrompt := fmt.Sprintf(`You are a professional instructional designer creating high-quality training content in Indonesian. Generate a comprehensive training plan following the OBJECTIVE → KONSEP → LANGKAH → STUDI KASUS → PENUTUP structure.
-
-%s
 
 %s
 
@@ -200,7 +132,7 @@ Return ONLY valid JSON without any markdown formatting, comments, or additional 
         "Kompetensi utama yang akan dikembangkan adalah [nama kompetensi] yang merupakan skill kritis untuk perwira kapal modern. Kemampuan ini mencakup aspek analitis, decision-making, dan implementasi praktis di lapangan. Dengan menguasai kompetensi ini, Anda akan lebih siap menghadapi berbagai tantangan operasional yang kompleks. Skill ini juga sangat dihargai oleh manajemen dan menjadi faktor penting dalam promosi karir.",
         "",
         "• Target Hasil yang Terukur",
-        "Setelah training ini, Anda diharapkan mampu: (1) mengidentifikasi dan mendefinisikan masalah dengan akurat, (2) menggunakan tools/metode yang diajarkan secara mandiri, (3) mengambil keputusan berbasis data dan fakta, bukan asumsi. Keberhasilan akan diukur melalui assessment di akhir training dan observasi implementasi di kapal. Target minimal adalah 80% pemahaman konsep dan kemampuan aplikasi dasar."
+        "Setelah training ini, Anda diharapkan mampu: (1) mengidentifikasi dan mendefinisikan masalah dengan akurat, (2) menggunakan tools/metode yang diajarkan secara mandiri, (3) mengambil keputusan berbasis data dan fakta, bukan asumsi. Keberhasilan akan diukur melalui assessment di akhir training dan observasi implementasi di kapal. Target minimal adalah 80%% pemahaman konsep dan kemampuan aplikasi dasar."
       ],
       "speaker_notes": "Mulai dengan greeting dan perkenalan singkat. Jelaskan mengapa training ini penting untuk karir mereka. Tanyakan ekspektasi peserta dan catat untuk dibahas di akhir sesi. Gunakan 5-7 menit untuk bagian objective ini.",
       "slide_type": "objective"
@@ -223,9 +155,7 @@ Return ONLY valid JSON without any markdown formatting, comments, or additional 
     "Maritime Leadership: Best Practices for Ship Officers - IMO Guidelines 2023",
     "Problem Solving Techniques in Maritime Operations - Indonesian Maritime Academy Publication"
   ]
-}
-
-%s`,
+}`,
 		contextSection,
 		focusSection,
 		structureSection,
@@ -756,72 +686,13 @@ func extractOptionalReferensi(referensi string) string {
 	return optional
 }
 
-func (s *Service) callGemini(ctx context.Context, prompt string) (*Plan, error) {
-	if s.apiKey == "" {
-		return nil, errors.New("GEMINI_API_KEY tidak di-set")
-	}
-
+func (s *Service) callLLM(ctx context.Context, prompt string) (*Plan, error) {
 	systemInstruction := "You are an expert instructional designer creating CONCISE PowerPoint training content in Indonesian. This is for PPT slides, NOT a full document - keep each bullet point to 1-2 sentences maximum. Be informative but CONCISE. Respond ONLY with valid JSON. No markdown, no code fences, no explanations. Just pure JSON."
 
-	body := map[string]any{
-		"system_instruction": map[string]any{
-			"parts": []map[string]string{
-				{"text": systemInstruction},
-			},
-		},
-		"contents": []map[string]any{
-			{
-				"parts": []map[string]string{
-					{"text": prompt},
-				},
-			},
-		},
-		"generationConfig": map[string]any{
-			"temperature":      0.6,
-			"topP":             0.9,
-			"maxOutputTokens":  65536,
-			"responseMimeType": "application/json",
-		},
-	}
-
-	b, _ := json.Marshal(body)
-	apiURL := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", s.model, s.apiKey)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(b))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.http.Do(req)
+	content, err := s.llm.CompleteJSON(ctx, systemInstruction, prompt, 0.6, 30000)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 300 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		s.log.Errorf("Gemini API error: status=%d body=%s", resp.StatusCode, string(bodyBytes))
-		return nil, fmt.Errorf("gemini status %d", resp.StatusCode)
-	}
-
-	var raw struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return nil, err
-	}
-	if len(raw.Candidates) == 0 || len(raw.Candidates[0].Content.Parts) == 0 {
-		return nil, errors.New("no candidates from gemini")
-	}
-
-	content := strings.TrimSpace(raw.Candidates[0].Content.Parts[0].Text)
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
 
 	var plan Plan
 	if err := json.Unmarshal([]byte(content), &plan); err != nil {
@@ -832,88 +703,10 @@ func (s *Service) callGemini(ctx context.Context, prompt string) (*Plan, error) 
 	return &plan, nil
 }
 
+// buildPDF writes the study guide for a plan without LLM-expanded explanations; every slide,
+// activity, assessment item and reference of the plan is still included.
 func (s *Service) buildPDF(plan *Plan, filename string) error {
-	pdf := gofpdf.New("P", "mm", "A4", "")
-	pdf.SetMargins(15, 15, 15)
-	pdf.SetAutoPageBreak(true, 15)
-
-	pdf.AddUTF8Font("DejaVu", "", "fonts/DejaVuSans.ttf")
-	pdf.AddUTF8Font("DejaVu", "B", "fonts/DejaVuSans-Bold.ttf")
-
-	pdf.AddPage()
-	pdf.SetFont("DejaVu", "B", 20)
-	pdf.CellFormat(0, 12, plan.Title, "", 1, "C", false, 0, "")
-	pdf.Ln(6)
-	pdf.SetFont("DejaVu", "", 12)
-	pdf.MultiCell(0, 7, fmt.Sprintf(
-		"Kompetensi: %s\nDurasi: %s\nAudiens: %s",
-		strings.Join(plan.Overview.Goals, ", "),
-		plan.Overview.Duration,
-		plan.Overview.Audience,
-	), "", "L", false)
-
-	for i, sl := range plan.Slides {
-		pdf.AddPage()
-		pdf.SetFont("DejaVu", "B", 16)
-		pdf.CellFormat(0, 10, fmt.Sprintf("Slide %d - %s", i+1, sl.Heading), "", 1, "L", false, 0, "")
-		pdf.Ln(2)
-		pdf.SetFont("DejaVu", "", 12)
-		for _, b := range sl.Bullets {
-			if strings.TrimSpace(b) == "" {
-				pdf.Ln(2)
-				continue
-			}
-			pdf.CellFormat(5, 6, "•", "", 0, "L", false, 0, "")
-			pdf.MultiCell(0, 6, b, "", "L", false)
-		}
-		if strings.TrimSpace(sl.SpeakerNotes) != "" {
-			pdf.Ln(3)
-			pdf.SetFont("DejaVu", "", 10)
-			pdf.SetTextColor(90, 90, 90)
-			pdf.MultiCell(0, 5, "Catatan Fasilitator: "+sl.SpeakerNotes, "", "L", false)
-			pdf.SetTextColor(0, 0, 0)
-		}
-	}
-
-	if len(plan.Activities) > 0 {
-		pdf.AddPage()
-		pdf.SetFont("DejaVu", "B", 16)
-		pdf.CellFormat(0, 10, "Aktivitas & Latihan", "", 1, "L", false, 0, "")
-		pdf.SetFont("DejaVu", "", 12)
-		for _, a := range plan.Activities {
-			pdf.SetFont("DejaVu", "B", 12)
-			pdf.MultiCell(0, 6, fmt.Sprintf("- %s (%s)", a.Title, a.Time), "", "L", false)
-			pdf.SetFont("DejaVu", "", 12)
-			pdf.MultiCell(0, 6, a.Instructions, "", "L", false)
-			pdf.Ln(2)
-		}
-	}
-
-	if len(plan.Assessment) > 0 {
-		pdf.AddPage()
-		pdf.SetFont("DejaVu", "B", 16)
-		pdf.CellFormat(0, 10, "Assessment (Contoh Q&A)", "", 1, "L", false, 0, "")
-		pdf.SetFont("DejaVu", "", 12)
-		for i, qa := range plan.Assessment {
-			pdf.MultiCell(0, 6, fmt.Sprintf("%d) %s", i+1, qa.Question), "", "L", false)
-			pdf.SetFont("DejaVu", "", 11)
-			pdf.MultiCell(0, 6, "Jawaban: "+qa.Answer, "", "L", false)
-			pdf.SetFont("DejaVu", "", 12)
-			pdf.Ln(1)
-		}
-	}
-
-	if len(plan.References) > 0 {
-		pdf.AddPage()
-		pdf.SetFont("DejaVu", "B", 16)
-		pdf.CellFormat(0, 10, "Referensi", "", 1, "L", false, 0, "")
-		pdf.SetFont("DejaVu", "", 11)
-		for _, r := range plan.References {
-			pdf.MultiCell(0, 5, "• "+r, "", "L", false)
-		}
-	}
-
-	return pdf.OutputFileAndClose(filename)
+	return s.buildGuidePDF(plan, nil, filename)
 }
 
 func (s *Service) buildPPTX(plan *Plan, filename string) error {
@@ -1533,594 +1326,11 @@ func (s *Service) DeleteOldFile(fileURL string) error {
 	return nil
 }
 
-// buildDetailedPrompt creates prompt for comprehensive PDF guide
-func (s *Service) buildDetailedPrompt(in GenerateInput) string {
-	topicType := s.determineTopicType(in.TopikTraining, in.Tools)
-	topicGuidelines := s.getTopicSpecificGuidelines(topicType)
-	
-	keyword := extractKeyword(in.Referensi)
-	additionalRef := extractOptionalReferensi(in.Referensi)
-
-	basePrompt := fmt.Sprintf(`You are an expert educational content writer creating a COMPREHENSIVE LEARNING GUIDE in Indonesian. This is a DETAILED STUDY GUIDE (bukan presentation slides) - lebih mendalam dari PPT dengan penjelasan lengkap, banyak contoh, dan aplikasi praktis.
-
-KONTEKS PELATIHAN:
-- Topik: %s
-- Kompetensi: %s
-- Level: %d
-- Tools/Framework: %s
-- Deskripsi Perilaku: %s
-- Referensi Utama: %s
-- Referensi Tambahan: %s
-
-%s
-
-STRUKTUR KONTEN (LENGKAP & MENDALAM):
-
-1. INTRODUCTION (500-700 kata):
-   - Konteks dan latar belakang topik secara menyeluruh
-   - Mengapa topik ini penting di workplace modern
-   - Relevansi dengan level kompetensi yang ditargetkan
-   - Overview lengkap apa yang akan dipelajari
-   - Manfaat konkret yang akan didapat
-   - Challenge umum yang akan dihadapi
-
-2. CORE CONCEPTS (4 SECTIONS, masing-masing 500-800 kata):
-   Setiap section harus mencakup:
-   - Penjelasan konsep secara detail dan mendalam
-   - Teori dan framework yang mendasari dengan elaborasi
-   - Contoh-contoh konkret dan relatable (minimal 2-3 per section)
-   - Best practices dan proven strategies dengan penjelasan
-   - Common mistakes dan cara menghindarinya (dijelaskan detail)
-   - Tips implementasi praktis dengan context
-   - Refleksi atau self-assessment questions
-
-3. PRACTICAL IMPLEMENTATION GUIDE (800-1000 kata):
-   - Step-by-step guide yang detail dan jelas
-   - Setiap step dijelaskan lengkap (120-180 kata per step)
-   - Contoh implementasi di berbagai konteks
-   - Checklist dan tools yang bisa digunakan
-   - Troubleshooting guide untuk masalah umum (dijelaskan detail)
-   - Success metrics dan cara mengukur progress
-   - Tips optimasi untuk setiap step
-
-4. CASE STUDIES (3 studi kasus, masing-masing 200-250 kata):
-   - Studi kasus lengkap dari dunia nyata (preferably Indonesia atau maritime context)
-   - Context, challenge, solution, outcome yang detail
-   - Analysis mendalam tentang mengapa berhasil/gagal
-   - Key lessons dan takeaways yang actionable
-   - Aplikasi ke situasi lain
-
-5. FAQ (5 pertanyaan):
-   - Pertanyaan umum yang sering muncul
-   - Jawaban lengkap dan detail (70-120 kata per jawaban)
-   - Include berbagai skenario dan situasi
-   - Tips tambahan dalam jawaban
-
-6. RESOURCES & FURTHER LEARNING:
-   - Books (4-6 buku) dengan deskripsi dan key takeaways
-   - Articles dan research papers penting
-   - Online courses atau video resources
-   - Tools dan templates yang bisa langsung digunakan
-   - Communities atau forums untuk networking
-
-7. CONCLUSION & ACTION PLAN (350-500 kata):
-   - Summary komprehensif dari semua konsep utama
-   - Immediate action steps (24-48 jam pertama)
-   - Short-term goals (1-3 bulan)
-   - Long-term development roadmap
-   - Self-assessment checklist
-   - Next steps untuk continuing education
-
-REQUIREMENTS:
-- Total content harus LENGKAP dan MENDALAM (5000-7000 kata total)
-- Ini BUKAN summary atau overview - ini learning guide yang comprehensive
-- Setiap konsep dijelaskan dengan depth dan multiple perspectives
-- Banyak contoh konkret, real-world applications, dan practical scenarios
-- Bahasa Indonesia yang jelas, engaging, dan mudah dipahami
-- Include analogies dan storytelling untuk clarity
-- Actionable insights dan practical tips di setiap bagian
-- Focus pada deep understanding DAN aplikasi praktis
-- Lebih detail dari PPT slides tapi tidak bertele-tele
-
-OUTPUT FORMAT - JSON VALID:
-{
-  "title": "Panduan Lengkap: [Topik Training]",
-  "introduction": "Penjelasan menyeluruh tentang topik (500-700 kata)...",
-  "sections": [
-    {
-      "title": "Judul Section",
-      "content": "Konten lengkap dan mendalam (500-800 kata)...",
-      "key_points": ["Poin penting 1 dengan elaborasi", "Poin penting 2 dengan elaborasi", ...],
-      "examples": ["Contoh detail 1 dengan context", "Contoh detail 2"],
-      "exercises": "Latihan refleksi atau self-assessment untuk section ini"
-    }
-  ],
-  "practical_guide": {
-    "step_by_step": [
-      {
-        "step_number": 1,
-        "title": "Judul Step",
-        "description": "Penjelasan detail step ini (120-180 kata) dengan context, rationale, dan tips...",
-        "examples": ["Contoh implementasi 1 dengan context", "Contoh implementasi 2"]
-      }
-    ],
-    "tips": ["Tips praktis 1 dengan penjelasan", "Tips praktis 2 dengan context", ...],
-    "common_pitfalls": ["Kesalahan umum 1: penjelasan dan cara menghindarinya", ...]
-  },
-  "case_studies": [
-    {
-      "title": "Judul Case Study",
-      "context": "Konteks lengkap (70-100 kata)",
-      "challenge": "Tantangan yang dihadapi (60-90 kata)",
-      "solution": "Solusi yang diterapkan (100-150 kata)",
-      "outcome": "Hasil yang didapat (50-80 kata)",
-      "lessons": ["Pelajaran 1 dengan elaborasi", "Pelajaran 2", "Pelajaran 3"]
-    }
-  ],
-  "faq": [
-    {
-      "question": "Pertanyaan yang relevan?",
-      "answer": "Jawaban lengkap dan detail (70-120 kata) dengan examples dan tips..."
-    }
-  ],
-  "resources": {
-    "books": ["Buku 1: Deskripsi dan key takeaways", "Buku 2: Deskripsi", ...],
-    "articles": ["Artikel 1 dengan deskripsi", "Artikel 2", ...],
-    "videos": ["Video/Course 1", "Video 2", ...],
-    "tools": ["Tool 1: Deskripsi penggunaan", "Tool 2", ...]
-  },
-  "conclusion": "Kesimpulan komprehensif dan action plan (350-500 kata)..."
-}
-
-PENTING: 
-- Hasilkan konten yang LENGKAP dan MENDALAM
-- Ini LEARNING GUIDE yang comprehensive, bukan summary
-- Setiap bagian harus substantif dengan value yang jelas
-- Lebih detail dan lengkap dari PPT slides
-- Peserta harus bisa deeply understand dan apply topik dari guide ini
-- Balance antara theory (pemahaman) dan practice (aplikasi)`, 
-		in.TopikTraining, 
-		in.Kompetensi, 
-		in.Level, 
-		in.Tools, 
-		keyword,
-		keyword,
-		additionalRef,
-		topicGuidelines)
-
-	return basePrompt
-}
-
-// callGeminiForDetailedContent calls LLM for detailed content
-func (s *Service) callGeminiForDetailedContent(ctx context.Context, prompt string) (*DetailedContent, error) {
-	systemInstruction := "You are an expert educational content writer. Always respond with valid JSON only, no markdown formatting."
-
-	payload := map[string]interface{}{
-		"system_instruction": map[string]any{
-			"parts": []map[string]string{
-				{"text": systemInstruction},
-			},
-		},
-		"contents": []map[string]any{
-			{
-				"parts": []map[string]string{
-					{"text": prompt},
-				},
-			},
-		},
-		"generationConfig": map[string]any{
-			"temperature":      0.8,
-			"maxOutputTokens":  65536,
-			"responseMimeType": "application/json",
-		},
-	}
-
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-
-	apiURL := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", s.model, s.apiKey)
-	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(jsonData))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("gemini API error: %d - %s", resp.StatusCode, string(body))
-	}
-
-	var geminiResp struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
-
-	if err := json.Unmarshal(body, &geminiResp); err != nil {
-		return nil, err
-	}
-
-	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
-		return nil, errors.New("no candidates in gemini response")
-	}
-
-	content := geminiResp.Candidates[0].Content.Parts[0].Text
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
-
-	var detailed DetailedContent
-	if err := json.Unmarshal([]byte(content), &detailed); err != nil {
-		s.log.Errorf("Failed to parse detailed content JSON: %v\nContent: %s", err, content)
-		return nil, fmt.Errorf("failed to parse LLM detailed output: %w", err)
-	}
-
-	return &detailed, nil
-}
-
-// buildDetailedPDF creates comprehensive PDF guide
-func (s *Service) buildDetailedPDF(content *DetailedContent, filename string) error {
-	pdf := gofpdf.New("P", "mm", "A4", "")
-	
-	// Add UTF-8 font (only use available fonts)
-	pdf.AddUTF8Font("DejaVu", "", "./fonts/DejaVuSans.ttf")
-	pdf.AddUTF8Font("DejaVu", "B", "./fonts/DejaVuSans-Bold.ttf")
-
-	// Cover page
-	pdf.AddPage()
-	pdf.SetFont("DejaVu", "B", 24)
-	pdf.SetTextColor(0, 51, 102)
-	pdf.MultiCell(0, 15, content.Title, "", "C", false)
-	pdf.Ln(20)
-	
-	pdf.SetFont("DejaVu", "", 14)
-	pdf.SetTextColor(80, 80, 80)
-	pdf.MultiCell(0, 8, "Panduan Pembelajaran Komprehensif", "", "C", false)
-	pdf.Ln(10)
-	pdf.MultiCell(0, 8, fmt.Sprintf("Generated: %s", time.Now().Format("02 January 2006")), "", "C", false)
-
-	// Table of Contents
-	pdf.AddPage()
-	pdf.SetFont("DejaVu", "B", 18)
-	pdf.SetTextColor(0, 51, 102)
-	pdf.Cell(0, 12, "Daftar Isi")
-	pdf.Ln(15)
-	
-	pdf.SetFont("DejaVu", "", 12)
-	pdf.SetTextColor(0, 0, 0)
-	tocItems := []string{
-		"1. Pendahuluan",
-		"2. Konsep Inti",
-		"3. Panduan Implementasi Praktis",
-		"4. Studi Kasus",
-		"5. FAQ (Frequently Asked Questions)",
-		"6. Sumber Belajar & Referensi",
-		"7. Kesimpulan & Rencana Aksi",
-	}
-	for _, item := range tocItems {
-		pdf.Cell(10, 8, "")
-		pdf.MultiCell(0, 8, item, "", "L", false)
-	}
-
-	// Introduction
-	pdf.AddPage()
-	pdf.SetFont("DejaVu", "B", 20)
-	pdf.SetTextColor(0, 51, 102)
-	pdf.Cell(0, 12, "1. PENDAHULUAN")
-	pdf.Ln(12)
-	
-	pdf.SetFont("DejaVu", "", 11)
-	pdf.SetTextColor(0, 0, 0)
-	pdf.MultiCell(0, 6, content.Introduction, "", "L", false)
-
-	// Core Sections
-	pdf.AddPage()
-	pdf.SetFont("DejaVu", "B", 20)
-	pdf.SetTextColor(0, 51, 102)
-	pdf.Cell(0, 12, "2. KONSEP INTI")
-	pdf.Ln(12)
-
-	for i, section := range content.Sections {
-		if i > 0 {
-			pdf.AddPage()
-		}
-		
-		// Section title
-		pdf.SetFont("DejaVu", "B", 16)
-		pdf.SetTextColor(0, 102, 204)
-		pdf.MultiCell(0, 10, fmt.Sprintf("2.%d %s", i+1, section.Title), "", "L", false)
-		pdf.Ln(5)
-		
-		// Section content
-		pdf.SetFont("DejaVu", "", 11)
-		pdf.SetTextColor(0, 0, 0)
-		pdf.MultiCell(0, 6, section.Content, "", "L", false)
-		pdf.Ln(5)
-		
-		// Key points
-		if len(section.KeyPoints) > 0 {
-			pdf.SetFont("DejaVu", "B", 12)
-			pdf.SetTextColor(0, 102, 204)
-			pdf.Cell(0, 8, "Poin-Poin Kunci:")
-			pdf.Ln(8)
-			
-			pdf.SetFont("DejaVu", "", 11)
-			pdf.SetTextColor(0, 0, 0)
-			for _, point := range section.KeyPoints {
-				pdf.Cell(5, 6, "")
-				pdf.Cell(5, 6, "•")
-				pdf.MultiCell(0, 6, point, "", "L", false)
-			}
-			pdf.Ln(3)
-		}
-		
-		// Examples
-		if len(section.Examples) > 0 {
-			pdf.SetFont("DejaVu", "B", 12)
-			pdf.SetTextColor(34, 139, 34)
-			pdf.Cell(0, 8, "Contoh Konkret:")
-			pdf.Ln(8)
-			
-			pdf.SetFont("DejaVu", "", 11)
-			pdf.SetTextColor(60, 60, 60)
-			for idx, example := range section.Examples {
-				pdf.SetFont("DejaVu", "B", 11)
-				pdf.Cell(0, 6, fmt.Sprintf("Contoh %d:", idx+1))
-				pdf.Ln(6)
-				pdf.SetFont("DejaVu", "", 11)
-				pdf.MultiCell(0, 6, example, "", "L", false)
-				pdf.Ln(3)
-			}
-		}
-		
-		// Exercises
-		if section.Exercises != "" {
-			pdf.Ln(3)
-			pdf.SetFillColor(255, 248, 220)
-			pdf.SetFont("DejaVu", "B", 11)
-			pdf.SetTextColor(139, 69, 19)
-			pdf.CellFormat(0, 8, "Latihan Refleksi:", "", 1, "L", true, 0, "")
-			pdf.SetFont("DejaVu", "", 10)
-			pdf.SetTextColor(0, 0, 0)
-			pdf.MultiCell(0, 6, section.Exercises, "", "L", true)
-		}
-	}
-
-	// Practical Guide
-	pdf.AddPage()
-	pdf.SetFont("DejaVu", "B", 20)
-	pdf.SetTextColor(0, 51, 102)
-	pdf.Cell(0, 12, "3. PANDUAN IMPLEMENTASI PRAKTIS")
-	pdf.Ln(15)
-
-	pdf.SetFont("DejaVu", "B", 14)
-	pdf.SetTextColor(0, 102, 204)
-	pdf.Cell(0, 10, "Langkah-Langkah Detail:")
-	pdf.Ln(10)
-
-	for _, step := range content.PracticalGuide.StepByStep {
-		pdf.SetFont("DejaVu", "B", 13)
-		pdf.SetTextColor(0, 0, 0)
-		pdf.MultiCell(0, 8, fmt.Sprintf("Langkah %d: %s", step.StepNumber, step.Title), "", "L", false)
-		pdf.Ln(3)
-		
-		pdf.SetFont("DejaVu", "", 11)
-		pdf.MultiCell(0, 6, step.Description, "", "L", false)
-		pdf.Ln(4)
-		
-		if len(step.Examples) > 0 {
-			pdf.SetFont("DejaVu", "", 10)
-			pdf.SetTextColor(60, 60, 60)
-			for _, ex := range step.Examples {
-				pdf.Cell(5, 6, "")
-				pdf.MultiCell(0, 6, "→ "+ex, "", "L", false)
-			}
-			pdf.SetTextColor(0, 0, 0)
-			pdf.Ln(4)
-		}
-	}
-
-	// Tips
-	if len(content.PracticalGuide.Tips) > 0 {
-		pdf.Ln(5)
-		pdf.SetFont("DejaVu", "B", 13)
-		pdf.SetTextColor(34, 139, 34)
-		pdf.Cell(0, 8, "Tips Implementasi:")
-		pdf.Ln(8)
-		
-		pdf.SetFont("DejaVu", "", 11)
-		pdf.SetTextColor(0, 0, 0)
-		for _, tip := range content.PracticalGuide.Tips {
-			pdf.Cell(5, 6, "")
-			pdf.Cell(5, 6, "✓")
-			pdf.MultiCell(0, 6, tip, "", "L", false)
-		}
-	}
-
-	// Common Pitfalls
-	if len(content.PracticalGuide.CommonPitfalls) > 0 {
-		pdf.Ln(8)
-		pdf.SetFont("DejaVu", "B", 13)
-		pdf.SetTextColor(204, 0, 0)
-		pdf.Cell(0, 8, "Kesalahan Umum yang Harus Dihindari:")
-		pdf.Ln(8)
-		
-		pdf.SetFont("DejaVu", "", 11)
-		pdf.SetTextColor(0, 0, 0)
-		for _, pitfall := range content.PracticalGuide.CommonPitfalls {
-			pdf.Cell(5, 6, "")
-			pdf.Cell(5, 6, "✗")
-			pdf.MultiCell(0, 6, pitfall, "", "L", false)
-		}
-	}
-
-	// Case Studies
-	if len(content.CaseStudies) > 0 {
-		pdf.AddPage()
-		pdf.SetFont("DejaVu", "B", 20)
-		pdf.SetTextColor(0, 51, 102)
-		pdf.Cell(0, 12, "4. STUDI KASUS")
-		pdf.Ln(15)
-
-		for i, cs := range content.CaseStudies {
-			if i > 0 {
-				pdf.Ln(10)
-			}
-			
-			pdf.SetFont("DejaVu", "B", 14)
-			pdf.SetTextColor(0, 102, 204)
-			pdf.MultiCell(0, 9, fmt.Sprintf("Studi Kasus %d: %s", i+1, cs.Title), "", "L", false)
-			pdf.Ln(5)
-			
-			pdf.SetFont("DejaVu", "B", 11)
-			pdf.SetTextColor(0, 0, 0)
-			pdf.Cell(0, 7, "Konteks:")
-			pdf.Ln(7)
-			pdf.SetFont("DejaVu", "", 11)
-			pdf.MultiCell(0, 6, cs.Context, "", "L", false)
-			pdf.Ln(3)
-			
-			pdf.SetFont("DejaVu", "B", 11)
-			pdf.Cell(0, 7, "Tantangan:")
-			pdf.Ln(7)
-			pdf.SetFont("DejaVu", "", 11)
-			pdf.MultiCell(0, 6, cs.Challenge, "", "L", false)
-			pdf.Ln(3)
-			
-			pdf.SetFont("DejaVu", "B", 11)
-			pdf.Cell(0, 7, "Solusi:")
-			pdf.Ln(7)
-			pdf.SetFont("DejaVu", "", 11)
-			pdf.MultiCell(0, 6, cs.Solution, "", "L", false)
-			pdf.Ln(3)
-			
-			pdf.SetFont("DejaVu", "B", 11)
-			pdf.Cell(0, 7, "Hasil:")
-			pdf.Ln(7)
-			pdf.SetFont("DejaVu", "", 11)
-			pdf.MultiCell(0, 6, cs.Outcome, "", "L", false)
-			pdf.Ln(5)
-			
-			if len(cs.Lessons) > 0 {
-				pdf.SetFont("DejaVu", "B", 11)
-				pdf.SetTextColor(34, 139, 34)
-				pdf.Cell(0, 7, "Pelajaran Penting:")
-				pdf.Ln(7)
-				pdf.SetFont("DejaVu", "", 11)
-				pdf.SetTextColor(0, 0, 0)
-				for _, lesson := range cs.Lessons {
-					pdf.Cell(5, 6, "")
-					pdf.Cell(5, 6, "•")
-					pdf.MultiCell(0, 6, lesson, "", "L", false)
-				}
-			}
-		}
-	}
-
-	// FAQ
-	if len(content.FAQ) > 0 {
-		pdf.AddPage()
-		pdf.SetFont("DejaVu", "B", 20)
-		pdf.SetTextColor(0, 51, 102)
-		pdf.Cell(0, 12, "5. FREQUENTLY ASKED QUESTIONS (FAQ)")
-		pdf.Ln(15)
-
-		for i, faq := range content.FAQ {
-			pdf.SetFont("DejaVu", "B", 12)
-			pdf.SetTextColor(0, 102, 204)
-			pdf.MultiCell(0, 7, fmt.Sprintf("Q%d: %s", i+1, faq.Question), "", "L", false)
-			pdf.Ln(4)
-			
-			pdf.SetFont("DejaVu", "", 11)
-			pdf.SetTextColor(0, 0, 0)
-			pdf.MultiCell(0, 6, "A: "+faq.Answer, "", "L", false)
-			pdf.Ln(6)
-		}
-	}
-
-	// Resources
-	pdf.AddPage()
-	pdf.SetFont("DejaVu", "B", 20)
-	pdf.SetTextColor(0, 51, 102)
-	pdf.Cell(0, 12, "6. SUMBER BELAJAR & REFERENSI")
-	pdf.Ln(15)
-
-	if len(content.Resources.Books) > 0 {
-		pdf.SetFont("DejaVu", "B", 13)
-		pdf.SetTextColor(0, 102, 204)
-		pdf.Cell(0, 8, "Buku Rekomendasi:")
-		pdf.Ln(8)
-		pdf.SetFont("DejaVu", "", 11)
-		pdf.SetTextColor(0, 0, 0)
-		for _, book := range content.Resources.Books {
-			pdf.Cell(5, 6, "")
-			pdf.MultiCell(0, 6, "• "+book, "", "L", false)
-		}
-		pdf.Ln(5)
-	}
-
-	if len(content.Resources.Articles) > 0 {
-		pdf.SetFont("DejaVu", "B", 13)
-		pdf.SetTextColor(0, 102, 204)
-		pdf.Cell(0, 8, "Artikel & Research Papers:")
-		pdf.Ln(8)
-		pdf.SetFont("DejaVu", "", 11)
-		pdf.SetTextColor(0, 0, 0)
-		for _, article := range content.Resources.Articles {
-			pdf.Cell(5, 6, "")
-			pdf.MultiCell(0, 6, "• "+article, "", "L", false)
-		}
-		pdf.Ln(5)
-	}
-
-	if len(content.Resources.Tools) > 0 {
-		pdf.SetFont("DejaVu", "B", 13)
-		pdf.SetTextColor(0, 102, 204)
-		pdf.Cell(0, 8, "Tools & Templates:")
-		pdf.Ln(8)
-		pdf.SetFont("DejaVu", "", 11)
-		pdf.SetTextColor(0, 0, 0)
-		for _, tool := range content.Resources.Tools {
-			pdf.Cell(5, 6, "")
-			pdf.MultiCell(0, 6, "• "+tool, "", "L", false)
-		}
-		pdf.Ln(5)
-	}
-
-	// Conclusion
-	pdf.AddPage()
-	pdf.SetFont("DejaVu", "B", 20)
-	pdf.SetTextColor(0, 51, 102)
-	pdf.Cell(0, 12, "7. KESIMPULAN & RENCANA AKSI")
-	pdf.Ln(15)
-	
-	pdf.SetFont("DejaVu", "", 11)
-	pdf.SetTextColor(0, 0, 0)
-	pdf.MultiCell(0, 6, content.Conclusion, "", "L", false)
-
-	return pdf.OutputFileAndClose(filename)
-}
-
 func (s *Service) GenerateAndBuildPDF(ctx context.Context, in GenerateInput) (link string, meta GenerateMeta, err error) {
 	s.log.Infof("[GenerateAndBuildPDF] Input: %+v", in)
 
 	prompt := s.buildPrompt(in)
-	plan, err := s.callGemini(ctx, prompt)
+	plan, err := s.callLLM(ctx, prompt)
 	if err != nil {
 		return "", GenerateMeta{}, err
 	}
@@ -2161,7 +1371,7 @@ func (s *Service) GenerateAndBuildPPTX(ctx context.Context, in GenerateInput, ol
 	// Generate PPTX (enhanced dengan lebih banyak konten)
 	s.log.Info("Generating enhanced presentation slides...")
 	promptPPTX := s.buildPrompt(in)
-	plan, err := s.callGemini(ctx, promptPPTX)
+	plan, err := s.callLLM(ctx, promptPPTX)
 	if err != nil {
 		return "", "", GenerateMeta{}, fmt.Errorf("failed to generate PPTX content: %w", err)
 	}
@@ -2177,28 +1387,18 @@ func (s *Service) GenerateAndBuildPPTX(ctx context.Context, in GenerateInput, ol
 	}
 	pptxLink = fmt.Sprintf("%s/files/materi/%s", s.pubBase, filenamePPTX)
 
-	// Generate comprehensive PDF guide
-	s.log.Info("Generating detailed PDF learning guide...")
-	promptPDF := s.buildDetailedPrompt(in)
-	detailedContent, err := s.callGeminiForDetailedContent(ctx, promptPDF)
-	if err != nil {
-		s.log.WithError(err).Warn("Failed to generate detailed PDF content, using basic PDF instead")
-		// Fallback to basic PDF if detailed generation fails
-		filenamePDF := fmt.Sprintf("%s-%s-guide.pdf", safe, ts)
-		absPDF := filepath.Join(s.outDir, filenamePDF)
-		if err := s.buildPDF(plan, absPDF); err != nil {
-			return pptxLink, "", GenerateMeta{Title: plan.Title, SlideCount: len(plan.Slides), Duration: plan.Overview.Duration, PPTXLink: pptxLink, PDFLink: ""}, fmt.Errorf("failed to build fallback PDF: %w", err)
-		}
-		pdfLink = fmt.Sprintf("%s/files/materi/%s", s.pubBase, filenamePDF)
-	} else {
-		// Build detailed PDF
-		filenamePDF := fmt.Sprintf("%s-%s-guide.pdf", safe, ts)
-		absPDF := filepath.Join(s.outDir, filenamePDF)
-		if err := s.buildDetailedPDF(detailedContent, absPDF); err != nil {
-			return pptxLink, "", GenerateMeta{Title: plan.Title, SlideCount: len(plan.Slides), Duration: plan.Overview.Duration, PPTXLink: pptxLink, PDFLink: ""}, fmt.Errorf("failed to build detailed PDF: %w", err)
-		}
-		pdfLink = fmt.Sprintf("%s/files/materi/%s", s.pubBase, filenamePDF)
+	// PDF = panduan belajar yang mengikuti PPT slide demi slide (nomor & urutan sama),
+	// dengan penjelasan tiap slide diperluas oleh LLM per batch kecil.
+	s.log.Info("Generating study guide PDF aligned with the PPT slides...")
+	expansions := s.expandSlides(ctx, in, plan)
+	s.log.Infof("PDF guide: penjelasan tersedia untuk slide PPT %v dari %d slide konten", expandedSlideNumbers(expansions), len(plan.Slides))
+
+	filenamePDF := fmt.Sprintf("%s-%s-guide.pdf", safe, ts)
+	absPDF := filepath.Join(s.outDir, filenamePDF)
+	if err := s.buildGuidePDF(plan, expansions, absPDF); err != nil {
+		return pptxLink, "", GenerateMeta{Title: plan.Title, SlideCount: len(plan.Slides), Duration: plan.Overview.Duration, PPTXLink: pptxLink}, fmt.Errorf("failed to build PDF: %w", err)
 	}
+	pdfLink = fmt.Sprintf("%s/files/materi/%s", s.pubBase, filenamePDF)
 
 	meta = GenerateMeta{
 		Title:      plan.Title,

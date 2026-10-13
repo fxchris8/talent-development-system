@@ -47,7 +47,6 @@ func (service *UserService) CreateAccessToken(user *domain.User) (string, error)
 
 	// TODO: Sign and Get the complete encoded token as a string using the secret key
 	secretKey := service.Config.GetString("JWT_SECRET_KEY")
-	fmt.Println(secretKey)
 
 	tokenString, err := token.SignedString([]byte(secretKey))
 	if err != nil {

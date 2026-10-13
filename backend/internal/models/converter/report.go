@@ -41,6 +41,8 @@ func ToReportData(data *domain.Report) web.ReportData {
 		Strength:             data.Strength,
 		TalentClassified:     data.TalentClassified,
 		IDPProgram:           data.IDPProgram,
+		TrainingStatus:       domain.EffectiveTrainingStatus(data.IDPProgram, data.TrainingStatus),
+		ExitedProgram:        data.ExitedProgram,
 		HavQuadran2:          data.HavQuadran2,
 		TalentClassified2:    data.TalentClassified2,
 		Readiness:            data.Readiness,

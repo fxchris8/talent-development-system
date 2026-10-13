@@ -45,12 +45,7 @@ func (controller *AssessmentResultController) Submit(ctx *gin.Context) {
 	assessmentResult, err := controller.AssessmentResultService.SubmitAssessment(controller.DB, &request)
 	if err != nil {
 		controller.Log.WithError(err).Error("Error submitting assessment")
-		webResponse := web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		}
-		ctx.JSON(http.StatusInternalServerError, webResponse)
+		respondServiceError(ctx, err)
 		return
 	}
 

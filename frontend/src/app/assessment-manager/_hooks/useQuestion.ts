@@ -2,6 +2,7 @@ import api from "@/app/lib/api";
 import { ApiReturn } from "@/app/types/api";
 import { QuestionOptionResponse } from "@/types/assessment";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { authFetch } from "@/app/lib/auth-fetch";
 
 export type QuestionCreatePayload = {
   role: string;
@@ -161,7 +162,7 @@ export const useGetQuestionsByAssessmentId = (assessmentId: number) => {
       if (assessmentId === 0) return null;
 
       const baseURL = process.env.NEXT_PUBLIC_API_ENDPOINT || "http://localhost:8080";
-      const response = await fetch(`${baseURL}/api/questions/assessment/${assessmentId}`, {
+      const response = await authFetch(`${baseURL}/api/questions/assessment/${assessmentId}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",

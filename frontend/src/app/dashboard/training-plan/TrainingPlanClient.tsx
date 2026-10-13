@@ -55,6 +55,7 @@ import {
 import TrainingScheduleTimeline from "./TrainingScheduleTimeline";
 import CompetencyMappingCMS from "./CompetencyMappingCMS";
 import TrainingMaterialTab from "./TrainingMaterialTab";
+import { authFetch } from "@/app/lib/auth-fetch";
 
 export default function TrainingPlanClient() {
   const [selectedProgram, setSelectedProgram] = useState("SDP");
@@ -127,7 +128,7 @@ export default function TrainingPlanClient() {
     }
 
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${process.env.NEXT_PUBLIC_API_ENDPOINT}/api/training-plan/export-excel?program=${selectedProgram}`
       );
 
@@ -346,7 +347,7 @@ export default function TrainingPlanClient() {
           <TabsTrigger value="mapping">Competency Mapping</TabsTrigger>
           <TabsTrigger value="schedules" className="relative">
             Training Plan
-            {overdueCount && overdueCount > 0 && (
+            {!!overdueCount && overdueCount > 0 && (
               <Badge
                 variant="destructive"
                 className="ml-2 h-4 w-4 rounded-full p-0 flex items-center justify-center text-[10px] font-medium"

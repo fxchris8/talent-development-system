@@ -176,10 +176,10 @@ export default function AssignmentTable({ batchId: externalBatchId }: { batchId?
 
       {/* Search bar */}
       {/* Search + Filters */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
         {/* Search */}
         <div className="flex gap-4 items-center">
-          <div className="relative w-[350px]">
+          <div className="relative w-[350px] max-w-full">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <Input
               placeholder="Cari nama, seafarer code, assessment..."
@@ -191,7 +191,7 @@ export default function AssignmentTable({ batchId: externalBatchId }: { batchId?
         </div>
 
         {/* FILTERS */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {/* Filter Assessment */}
           <Select value={filterAssessment} onValueChange={setFilterAssessment}>
             <SelectTrigger className="w-[180px]">

@@ -36,19 +36,10 @@ import { useGetAllAssessments } from "./_hooks/useAssessment";
 import { useGetAspectsByAssessmentId } from "./_hooks/useAspect";
 import { QuestionOptionResponse } from "@/types/assessment";
 import Image from "next/image";
-import { BASE_URL } from "../lib/api";
+import { isValidImageUrl, resolveImageUrl } from "../lib/image";
 import { AspectResponse } from "@/types/aspect";
 
 const VA_1_CATEGORIES = ["Integrity", "Customer Oriented", "Competitive", "Team Work", "Visioner"];
-
-// Helper function to check if image URL is valid
-export const isValidImageUrl = (imageUrl: string | null | undefined): boolean => {
-  if (!imageUrl || typeof imageUrl !== "string") return false;
-  const trimmed = imageUrl.trim();
-  if (trimmed === "" || trimmed === "null" || trimmed === "undefined") return false;
-  // Check if it starts with a valid path character
-  return trimmed.startsWith("/");
-};
 
 export default function QuestionsAdmin() {
   const queryClient = useQueryClient();
@@ -424,11 +415,12 @@ export default function QuestionsAdmin() {
                           </div>
                           {isValidImageUrl(question.imageUrl) && (
                             <Image
-                              src={BASE_URL + question.imageUrl}
+                              src={resolveImageUrl(question.imageUrl as string)}
                               alt={`Gambar untuk pertanyaan ${index + 1}`}
                               width={300}
                               height={200}
-                              className="mb-2 rounded"
+                              unoptimized
+                              className="mb-2 h-auto max-w-full rounded object-contain"
                             />
                           )}
                           <p className="text-sm font-medium mb-2">{question.questionText}</p>
@@ -501,11 +493,12 @@ export default function QuestionsAdmin() {
                                   <div className="flex flex-col gap-2">
                                     {isValidImageUrl(option.imageUrl) && (
                                       <Image
-                                        src={BASE_URL + option.imageUrl}
+                                        src={resolveImageUrl(option.imageUrl as string)}
                                         alt={option.optionLetter}
                                         width={300}
                                         height={200}
-                                        className="rounded"
+                                        unoptimized
+                                        className="h-auto max-w-full rounded object-contain"
                                       />
                                     )}
                                     <span className="text-sm">{option.optionText}</span>

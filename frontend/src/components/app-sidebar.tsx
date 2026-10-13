@@ -123,7 +123,7 @@ export function AppSidebar() {
                   alt="Logo SPIL"
                   width={34}
                   height={34}
-                  className="mr-2 w-[30%]"
+                  className="mr-2 h-[34px] w-[34px] shrink-0 object-contain"
                 />
                 <h2 className="text-2xl font-bold text-center">SPIL</h2>
               </div>

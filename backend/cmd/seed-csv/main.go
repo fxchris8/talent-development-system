@@ -20,6 +20,20 @@ const csvDir = "cmd/seed-csv/data"
 func main() {
 	viperConfig := config.NewViper()
 	log := config.NewLogger(viperConfig)
+	// SEED_ON_START controls what the seeder does (it runs on every container start):
+	//   auto   (default) - fill only tables that are still empty. Rows an admin deleted are
+	//                      NOT re-created, and existing data is never touched.
+	//   always           - old behaviour: re-create every seed row that is missing.
+	//   never            - do nothing.
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("SEED_ON_START")))
+	if mode == "" {
+		mode = "auto"
+	}
+	if mode == "never" {
+		log.Info("SEED_ON_START=never, skipping database seeding")
+		return
+	}
+
 	db := config.NewDatabase(viperConfig, log)
 
 	// Disable foreign key checks to avoid issues with circular dependencies or legacy schema
@@ -40,20 +54,21 @@ func main() {
 		name     string
 		filename string
 		fn       func(*gorm.DB, string) error
+		model    interface{}
 	}{
-		{"Users", "users.csv", seedUsersFromCSV},
-		{"AssessmentTypes", "assessment_types.csv", seedAssessmentTypesFromCSV},
-		{"Assessments", "assessments.csv", seedAssessmentsFromCSV},
-		{"CompetencyTypes", "competency_types.csv", seedCompetencyTypesFromCSV},
-		{"Trainings", "trainings.csv", seedTrainingsFromCSV},
-		{"CompetencyProgramMappings", "competency_program_mappings.csv", seedCompetencyProgramMappingsFromCSV},
-		{"TrainingSchedules", "training_schedules.csv", seedTrainingSchedulesFromCSV},
-		{"Aspects", "aspects.csv", seedAspectsFromCSV},
-		{"Questions", "questions.csv", seedQuestionsFromCSV},
-		{"Options", "options.csv", seedOptionsFromCSV},
-		{"Reports", "reports.csv", seedReportsFromCSV},
-		{"GapCompetencies", "gap_competencies.csv", seedGapCompetenciesFromCSV},
-		{"SeafarerAssessments", "seafarer_assessments.csv", seedSeafarerAssessmentsFromCSV},
+		{"Users", "users.csv", seedUsersFromCSV, &domain.User{}},
+		{"AssessmentTypes", "assessment_types.csv", seedAssessmentTypesFromCSV, &domain.AssessmentType{}},
+		{"Assessments", "assessments.csv", seedAssessmentsFromCSV, &domain.Assessment{}},
+		{"CompetencyTypes", "competency_types.csv", seedCompetencyTypesFromCSV, &domain.CompetencyType{}},
+		{"Trainings", "trainings.csv", seedTrainingsFromCSV, &domain.Training{}},
+		{"CompetencyProgramMappings", "competency_program_mappings.csv", seedCompetencyProgramMappingsFromCSV, &domain.CompetencyProgramMapping{}},
+		{"TrainingSchedules", "training_schedules.csv", seedTrainingSchedulesFromCSV, &domain.TrainingSchedule{}},
+		{"Aspects", "aspects.csv", seedAspectsFromCSV, &domain.Aspect{}},
+		{"Questions", "questions.csv", seedQuestionsFromCSV, &domain.Question{}},
+		{"Options", "options.csv", seedOptionsFromCSV, &domain.Option{}},
+		{"Reports", "reports.csv", seedReportsFromCSV, &domain.Report{}},
+		{"GapCompetencies", "gap_competencies.csv", seedGapCompetenciesFromCSV, &domain.GapCompetency{}},
+		{"SeafarerAssessments", "seafarer_assessments.csv", seedSeafarerAssessmentsFromCSV, &domain.SeafarerAssessment{}},
 	}
 
 	for _, seeder := range seeders {
@@ -63,6 +78,14 @@ func main() {
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
 			log.Warnf("CSV file not found: %s, skipping...", filePath)
 			continue
+		}
+
+		if mode != "always" {
+			var count int64
+			if err := db.Model(seeder.model).Count(&count).Error; err == nil && count > 0 {
+				log.Infof("%s already has %d row(s), not seeding (SEED_ON_START=%s)", seeder.name, count, mode)
+				continue
+			}
 		}
 
 		if err := seeder.fn(db, filePath); err != nil {

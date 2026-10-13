@@ -27,6 +27,8 @@ type MasterReport struct {
 	Strength                   string  `json:"strength" gorm:"column:strength"`
 	TalentClassified           string  `json:"talentClassified" gorm:"column:talent_classified"`
 	IDPProgram                 string  `json:"idpProgram" gorm:"column:idp_program"`
+	TrainingStatus             string  `json:"trainingStatus" gorm:"column:training_status"`
+	ExitedProgram              string  `json:"exitedProgram" gorm:"column:exited_program"`
 	HavQuadran2                int     `json:"havQuadran2" gorm:"column:hav_quadran2"`
 	TalentClassified2          string  `json:"talentClassified2" gorm:"column:talent_classified2"`
 	Readiness                  string  `json:"readiness" gorm:"column:readiness"`
@@ -66,23 +68,27 @@ type FullReport struct {
 	YearOfCase    *string `gorm:"column:year_of_case;default:null"`
 	VesselHistory *string `gorm:"column:vessel_history;default:null"`
 
-	KonditeReview         *int    `gorm:"column:kondite_review;default:0"`
-	KpiVessel             *int    `gorm:"column:kpi_vessel;default:0"`
-	PerformanceScore      *int    `gorm:"column:performance_score;default:0"`
-	ValueAssessment       *int    `gorm:"column:value_assessment;default:0"`
-	AssessmentCenter      *int    `gorm:"column:assessment_center;default:0"`
-	PotentialScore        *int    `gorm:"column:potential_score;default:0"`
-	HavQuadran            *int    `gorm:"column:hav_quadran;default:0"`
-	HavMapping            *string `gorm:"column:hav_mapping;default:null"`
-	CompetencyGapAnalysis *string `gorm:"column:competency_gap_analysis;default:null"`
-	TotalGap              *int    `gorm:"column:total_gap;default:0"`
-	Strength              *string `gorm:"column:strength;default:null"`
-	TalentClassified      *string `gorm:"column:talent_classified;default:null"`
-	IDPProgram            *string `gorm:"column:idp_program;default:null"`
-	HavQuadran2           *int    `gorm:"column:hav_quadran2;default:0"`
-	TalentClassified2     *string `gorm:"column:talent_classified2;default:null"`
-	Readiness             *string `gorm:"column:readiness;default:null"`
-	CertificateEligible   *string `gorm:"column:certificate_eligible;default:null"`
+	KonditeReview         *int       `gorm:"column:kondite_review;default:0"`
+	KpiVessel             *int       `gorm:"column:kpi_vessel;default:0"`
+	PerformanceScore      *int       `gorm:"column:performance_score;default:0"`
+	ValueAssessment       *int       `gorm:"column:value_assessment;default:0"`
+	AssessmentCenter      *int       `gorm:"column:assessment_center;default:0"`
+	PotentialScore        *int       `gorm:"column:potential_score;default:0"`
+	HavQuadran            *int       `gorm:"column:hav_quadran;default:0"`
+	HavMapping            *string    `gorm:"column:hav_mapping;default:null"`
+	CompetencyGapAnalysis *string    `gorm:"column:competency_gap_analysis;default:null"`
+	TotalGap              *int       `gorm:"column:total_gap;default:0"`
+	Strength              *string    `gorm:"column:strength;default:null"`
+	TalentClassified      *string    `gorm:"column:talent_classified;default:null"`
+	IDPProgram            *string    `gorm:"column:idp_program;default:null"`
+	TrainingStatus        *string    `gorm:"column:training_status;default:null"`
+	ExitedProgram         *string    `gorm:"column:exited_program;default:null"`
+	ProgramExitedAt       *time.Time `gorm:"column:program_exited_at;default:null"`
+	CompletedBeforeExit   *bool      `gorm:"column:completed_before_exit;default:false"`
+	HavQuadran2           *int       `gorm:"column:hav_quadran2;default:0"`
+	TalentClassified2     *string    `gorm:"column:talent_classified2;default:null"`
+	Readiness             *string    `gorm:"column:readiness;default:null"`
+	CertificateEligible   *string    `gorm:"column:certificate_eligible;default:null"`
 
 	TrainingCompleted  *string `gorm:"column:training_completed;default:null"`
 	TrainingPlanned    *string `gorm:"column:training_planned;default:null"`

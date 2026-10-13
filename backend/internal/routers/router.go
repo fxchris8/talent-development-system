@@ -33,7 +33,9 @@ type RouterConfig struct {
 	QuizController               *controllers.QuizController
 	ScoringConfigController      *controllers.ScoringConfigController
 	NewRecruiterController       *controllers.NewRecruiterController
+	CitrixSyncController         *controllers.CitrixSyncController
 	AuthMiddleware               gin.HandlerFunc
+	OptionalAuthMiddleware       gin.HandlerFunc
 	BatchController              *controllers.BatchController
 }
 
@@ -67,31 +69,39 @@ func (c *RouterConfig) SetupGuestRouter() {
 		sso.GET("/callback", c.UserController.SSOCallback)
 	}
 
-	report := c.App.Group("reports")
+	// Public: the quiz/assessment pages (no login) look a seafarer up by seafarer code and get
+	// identity fields only; the full talent profile is returned to logged-in admins.
+	c.App.GET("reports/seafarer-code/:seafarerCode", c.OptionalAuthMiddleware, c.ReportController.FindBySeafarerCode)
+
+	// Everything else about reports is for logged-in admins only.
+	report := c.App.Group("reports").Use(c.AuthMiddleware)
 	{
 		report.GET("", c.ReportController.FindAll)
 		report.GET("/idp-count", c.ReportController.IDPCount)
+		report.GET("/program-exits", c.ReportController.ProgramExits)
 		report.GET("/seaman-code/:seamanCode", c.ReportController.FindBySeamanCode)
-		report.GET("/seafarer-code/:seafarerCode", c.ReportController.FindBySeafarerCode)
 		report.GET("/seafarer-code/:seafarerCode/training-data", c.ReportController.GetTrainingData)
 		report.GET("/seafarer-code/:seafarerCode/training-summary", c.ReportController.GetTrainingSummary)
 		report.POST("/refresh-personal-data", c.ReportController.RefreshPersonalData)
 		report.POST("/upload", c.ReportController.CreateAll)
-		report.GET("/test", c.ReportController.TestPanic)
 	}
 
-	trainings := c.App.Group("trainings")
+	c.App.GET("trainings", c.TrainingGenController.FindAll)
+
+	// Creating, editing and AI generation (LLM cost) require a logged-in user
+	trainings := c.App.Group("trainings").Use(c.AuthMiddleware)
 	{
-		trainings.GET("", c.TrainingGenController.FindAll)
 		trainings.POST("", c.TrainingController.Create)
 		trainings.POST("/generate", c.TrainingGenController.Generate)
 		trainings.POST("/generate-quiz", c.TrainingGenController.GenerateQuiz)
+		trainings.POST("/narration", c.TrainingGenController.Narration)
+		trainings.POST("/narration-audio", c.TrainingGenController.NarrationAudio)
 		trainings.PUT("/:no", c.TrainingController.Update)
 		trainings.PUT("/:no/referensi", c.TrainingController.UpdateReferensi)
 		trainings.DELETE("/:no", c.TrainingController.Delete)
 	}
 
-	trainingPlan := c.App.Group("api/training-plan")
+	trainingPlan := c.App.Group("api/training-plan").Use(c.AuthMiddleware)
 	{
 		trainingPlan.GET("", c.TrainingPlanController.GetTrainingPlan)
 		trainingPlan.POST("/generate-schedules", c.TrainingPlanController.GenerateSchedules)
@@ -104,14 +114,14 @@ func (c *RouterConfig) SetupGuestRouter() {
 	}
 
 	// IDP Tracking endpoints (for readiness refresh)
-	idpTracking := c.App.Group("api/idp-tracking")
+	idpTracking := c.App.Group("api/idp-tracking").Use(c.AuthMiddleware)
 	{
 		idpTracking.POST("/refresh/:reportId", c.IDPTrackingController.RefreshReadiness) // Refresh specific report
 		idpTracking.POST("/refresh-all", c.IDPTrackingController.RefreshAllReadiness)    // Refresh all reports
 	}
 
 	// Competency Mapping CMS endpoints
-	competencyMapping := c.App.Group("api/competency-mappings")
+	competencyMapping := c.App.Group("api/competency-mappings").Use(c.AuthMiddleware)
 	{
 		competencyMapping.GET("", c.CompetencyMappingController.GetMappingsByProgram)
 		competencyMapping.GET("/all", c.CompetencyMappingController.GetAllMappings)
@@ -132,7 +142,7 @@ func (c *RouterConfig) SetupGuestRouter() {
 	// All trainings endpoint for dropdowns
 	c.App.GET("api/trainings", c.CompetencyMappingController.GetAllTrainings)
 
-	mentoringReports := c.App.Group("mentoring-reports")
+	mentoringReports := c.App.Group("mentoring-reports").Use(c.AuthMiddleware)
 	{
 		mentoringReports.POST("", c.MentoringReportController.Create)
 		mentoringReports.GET("", c.MentoringReportController.FindAll)
@@ -143,7 +153,7 @@ func (c *RouterConfig) SetupGuestRouter() {
 		mentoringReports.GET("/reports/:reportId", c.MentoringReportController.FindByReportID)
 	}
 
-	coachingReports := c.App.Group("coaching-reports")
+	coachingReports := c.App.Group("coaching-reports").Use(c.AuthMiddleware)
 	{
 		coachingReports.POST("", c.CoachingReportController.Create)
 		coachingReports.GET("", c.CoachingReportController.GetAll)
@@ -151,21 +161,6 @@ func (c *RouterConfig) SetupGuestRouter() {
 		coachingReports.PUT("/:id", c.CoachingReportController.Update)
 		coachingReports.DELETE("/:id", c.CoachingReportController.Delete)
 		coachingReports.GET("/reports/:reportId", c.CoachingReportController.GetByReportID)
-	}
-
-	questions := c.App.Group("questions")
-	{
-		questions.POST("", c.QuestionController.Create)
-		questions.GET("", c.QuestionController.FindAll)
-		questions.GET("/:questionId", c.QuestionController.FindById)
-	}
-
-	options := c.App.Group("options")
-	{
-		options.POST("", c.OptionController.Create)
-		options.GET("", c.OptionController.FindAll)
-		options.GET("/:optionId", c.OptionController.FindById)
-		options.GET("/question/:questionId", c.OptionController.FindByQuestionId)
 	}
 
 	// Combined question-option routes (Public access - only read operations)
@@ -215,19 +210,19 @@ func (c *RouterConfig) SetupGuestRouter() {
 	}
 
 	// Seamen endpoints (Public - read only)
-	seamen := c.App.Group("api/seamen")
+	seamen := c.App.Group("api/seamen").Use(c.AuthMiddleware)
 	{
 		seamen.GET("/available", c.SeamanController.SearchAvailableSeamen)
 	}
 
 	// Register Question and Option routes
-	QuestionRouter(c.App, c.QuestionController)
-	OptionRouter(c.App, c.OptionController)
-	AspectRouter(c.App, c.AspectController)
+	QuestionRouter(c.App, c.QuestionController, c.AuthMiddleware)
+	OptionRouter(c.App, c.OptionController, c.AuthMiddleware)
+	AspectRouter(c.App, c.AspectController, c.AuthMiddleware)
 }
 func (r *RouterConfig) SetupMasterRouter() {
 
-	group := r.App.Group("/api/master-reports")
+	group := r.App.Group("/api/master-reports").Use(r.AuthMiddleware)
 
 	{
 		group.GET("", r.MasterController.FindAll)
@@ -243,7 +238,7 @@ func (r *RouterConfig) SetupMasterRouter() {
 
 // --- Router assignment baru
 func (r *RouterConfig) SetupAssignmentRouter() {
-	group := r.App.Group("/api/assignments")
+	group := r.App.Group("/api/assignments").Use(r.AuthMiddleware)
 	{
 		group.GET("", r.AssignmentController.ListPaged)
 		group.POST("", r.AssignmentController.Create)
@@ -261,6 +256,11 @@ func (c *RouterConfig) SetupAuthRouter() {
 	}
 
 	// User Management Routes (admin only)
+	citrix := c.App.Group("api/citrix").Use(c.AuthMiddleware)
+	{
+		citrix.POST("/sync", c.CitrixSyncController.Sync)
+	}
+
 	userMgmt := c.App.Group("api/users").Use(c.AuthMiddleware)
 	{
 		userMgmt.POST("", c.UserController.CreateUser)
@@ -330,15 +330,15 @@ func (c *RouterConfig) SetupAuthRouter() {
 func (r *RouterConfig) SetupQuizRouter() {
 	group := r.App.Group("/api/quiz")
 	{
-		group.GET("/history", r.QuizController.GetQuizHistory)
-		group.GET("/history/:attemptId", r.QuizController.GetQuizAttempt)
+		group.GET("/history", r.AuthMiddleware, r.QuizController.GetQuizHistory)
+		group.GET("/history/:attemptId", r.AuthMiddleware, r.QuizController.GetQuizAttempt)
 		group.GET("/:assessmentTypeId", r.QuizController.GetQuizData)
 		group.POST("/submit", r.QuizController.SubmitQuiz)
 	}
 }
 
 func (r *RouterConfig) SetupScoringConfigRouter() {
-	group := r.App.Group("/api/scoring-config")
+	group := r.App.Group("/api/scoring-config").Use(r.AuthMiddleware)
 	{
 		group.GET("/:assessmentTypeId", r.ScoringConfigController.GetScoringConfig)
 		group.PUT("/:assessmentTypeId", r.ScoringConfigController.UpdateScoringConfig)
@@ -347,7 +347,7 @@ func (r *RouterConfig) SetupScoringConfigRouter() {
 }
 
 func (r *RouterConfig) SetupBatchRouter() {
-	group := r.App.Group("/api/batches")
+	group := r.App.Group("/api/batches").Use(r.AuthMiddleware)
 	{
 		group.GET("", r.BatchController.FindAll)
 		group.POST("", r.BatchController.Create)

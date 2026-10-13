@@ -6,8 +6,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func OptionRouter(router *gin.Engine, optionController *controllers.OptionController) {
-	optionRoutes := router.Group("/api/options")
+func OptionRouter(router *gin.Engine, optionController *controllers.OptionController, auth gin.HandlerFunc) {
+	// The question bank holds the answer key (option scores): admins only, reads included.
+	// Quiz pages get their questions, without scores, from /api/quiz and /api/assessments/public.
+	optionRoutes := router.Group("/api/options").Use(auth)
 	{
 		optionRoutes.POST("", optionController.Create)
 		optionRoutes.GET("", optionController.FindAll)

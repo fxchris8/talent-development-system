@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,19 @@ import {
   Download,
   PlayCircle,
   AlertTriangle,
+  History,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useSwapSchedules, useToggleTrainingStarted } from "./_hooks/useTrainingPlan";
 import type { TrainingPlanSummary } from "./_hooks/useTrainingPlan";
 import CourseNameDialog from "./CourseNameDialog";
+import {
+  buildTimelineLayout,
+  describeDelay,
+  getWeekLabel,
+  toCalendarDayIso,
+  weekEnd,
+} from "./_hooks/timelineLayout";
 
 interface TrainingScheduleTimelineProps {
   summary: TrainingPlanSummary;
@@ -47,6 +55,9 @@ interface WeekSlot {
   date: Date;
 }
 
+const formatMonth = (date: Date): string =>
+  date.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+
 export default function TrainingScheduleTimeline({
   summary,
   program,
@@ -59,6 +70,8 @@ export default function TrainingScheduleTimeline({
   const [draggedItem, setDraggedItem] = useState<ScheduleItem | null>(null);
   const [dragOverWeek, setDragOverWeek] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [postponedCollapsed, setPostponedCollapsed] = useState(true);
   const [toggleLoading, setToggleLoading] = useState<number | null>(null);
   const [showCourseNameDialog, setShowCourseNameDialog] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<ScheduleItem | null>(null);
@@ -75,14 +88,6 @@ export default function TrainingScheduleTimeline({
     setCollapsedMonths(newCollapsed);
   };
 
-  const getWeekLabel = (date: Date): string => {
-    const d = date.getDate();
-    if (d <= 7) return "I";
-    if (d <= 14) return "II";
-    if (d <= 21) return "III";
-    return "IV";
-  };
-
   const getCompetencyName = (competencyCode: string): string => {
     return competencyMapping?.[competencyCode]?.name || competencyCode;
   };
@@ -91,14 +96,6 @@ export default function TrainingScheduleTimeline({
     const topics = competencyMapping?.[competencyCode]?.training_topics;
     if (!topics || topics.length === 0) return "Training Material";
     return topics[materialType - 1] || topics[0] || "Training Material";
-  };
-
-  const isOverdue = (schedule: ScheduleItem): boolean => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset time to compare dates only
-    const scheduledDate = new Date(schedule.scheduledDate);
-    scheduledDate.setHours(0, 0, 0, 0);
-    return scheduledDate < today && !schedule.isStarted;
   };
 
   const parseSchedules = (): ScheduleItem[] => {
@@ -150,33 +147,15 @@ export default function TrainingScheduleTimeline({
       parsedSchedules.map((s) => ({ ...s, scheduledDate: new Date(s.scheduledDate) }))
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [summary]);
+  }, [summary, competencyMapping]);
 
-  const generateMonthsToDisplay = (schedulesData: ScheduleItem[]): Date[] => {
-    if (schedulesData.length === 0) return [];
-
-    const startDate = new Date(schedulesData[0].scheduledDate);
-    const endDate = new Date(schedulesData[schedulesData.length - 1].scheduledDate);
-
-    const months: Date[] = [];
-    const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-    const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
-
-    while (current <= end) {
-      months.push(new Date(current));
-      current.setMonth(current.getMonth() + 1);
-    }
-
-    return months;
-  };
-
-  const getSchedulesForMonth = (schedulesData: ScheduleItem[], month: Date): ScheduleItem[] => {
-    return schedulesData.filter(
-      (schedule) =>
-        schedule.scheduledDate.getMonth() === month.getMonth() &&
-        schedule.scheduledDate.getFullYear() === month.getFullYear()
-    );
-  };
+  // Timeline = bulan ini ke depan. Yang belum dimulai dan minggunya sudah lewat dikumpulkan
+  // di blok "Tertunda" paling atas; bulan lampau yang sudah berjalan masuk "riwayat".
+  const layout = useMemo(() => buildTimelineLayout(schedules, new Date()), [schedules]);
+  const postponedIds = useMemo(
+    () => new Set(layout.postponed.map((s) => s.id)),
+    [layout.postponed]
+  );
 
   const getWeekSlotsForMonth = (month: Date): WeekSlot[] => {
     return [
@@ -191,19 +170,24 @@ export default function TrainingScheduleTimeline({
     ];
   };
 
-  const getSchedulesForWeek = (
-    schedulesData: ScheduleItem[],
-    weekSlot: WeekSlot
-  ): ScheduleItem[] => {
-    return schedulesData.filter((schedule) => {
-      const scheduleWeek = getWeekLabel(schedule.scheduledDate);
-      return (
-        scheduleWeek === weekSlot.weekLabel &&
+  // Jadwal pada satu minggu, tanpa yang sudah dipindah ke blok "Tertunda".
+  const getSchedulesForWeek = (weekSlot: WeekSlot): ScheduleItem[] => {
+    return schedules.filter(
+      (schedule) =>
+        !postponedIds.has(schedule.id) &&
+        getWeekLabel(schedule.scheduledDate) === weekSlot.weekLabel &&
         schedule.scheduledDate.getMonth() === weekSlot.date.getMonth() &&
         schedule.scheduledDate.getFullYear() === weekSlot.date.getFullYear()
-      );
-    });
+    );
   };
+
+  const countForMonth = (month: Date): number =>
+    schedules.filter(
+      (s) =>
+        !postponedIds.has(s.id) &&
+        s.scheduledDate.getMonth() === month.getMonth() &&
+        s.scheduledDate.getFullYear() === month.getFullYear()
+    ).length;
 
   const getWeekKey = (month: Date, weekLabel: string): string => {
     return `${month.getFullYear()}-${month.getMonth()}-${weekLabel}`;
@@ -232,11 +216,9 @@ export default function TrainingScheduleTimeline({
       return;
     }
 
-    const newSchedules = [...schedules];
-    const draggedIndex = newSchedules.findIndex((s) => s.id === draggedItem.id);
-
-    newSchedules[draggedIndex].scheduledDate = new Date(weekSlot.date);
-
+    const newSchedules = schedules.map((s) =>
+      s.id === draggedItem.id ? { ...s, scheduledDate: new Date(weekSlot.date) } : s
+    );
     newSchedules.sort((a, b) => a.scheduledDate.getTime() - b.scheduledDate.getTime());
 
     setSchedules(newSchedules);
@@ -264,7 +246,7 @@ export default function TrainingScheduleTimeline({
       })
       .map((schedule) => ({
         id: schedule.id,
-        scheduledDate: schedule.scheduledDate.toISOString(),
+        scheduledDate: toCalendarDayIso(schedule.scheduledDate),
       }));
 
     if (swaps.length === 0) {
@@ -352,8 +334,6 @@ export default function TrainingScheduleTimeline({
     }
   };
 
-  const monthsToDisplay = generateMonthsToDisplay(schedules);
-
   if (schedules.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground">
@@ -362,12 +342,162 @@ export default function TrainingScheduleTimeline({
     );
   }
 
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const renderSchedule = (schedule: ScheduleItem, postponed: boolean) => (
+    <div
+      key={schedule.id}
+      draggable={editMode}
+      onDragStart={(e) => editMode && handleDragStart(e, schedule)}
+      onDragEnd={editMode ? handleDragEnd : undefined}
+      className={`flex items-center gap-3 p-2 rounded-md transition-all ${
+        editMode
+          ? `cursor-move ${
+              draggedItem?.id === schedule.id
+                ? "opacity-50 bg-blue-200"
+                : "bg-white hover:bg-gray-50 shadow-sm"
+            }`
+          : "bg-white shadow-sm"
+      } ${postponed ? "border border-red-300" : ""}`}
+    >
+      {postponed && <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" />}
+      <Badge
+        variant={schedule.category === "M" ? "destructive" : "secondary"}
+        className={`font-medium ${schedule.category !== "M" ? "bg-blue-500 text-white hover:bg-blue-600" : ""}`}
+      >
+        {schedule.category}
+      </Badge>
+      <div className="flex-1 min-w-0">
+        <div className="font-medium text-sm">{schedule.trainingMaterial}</div>
+        <div className="text-xs text-muted-foreground">
+          {schedule.competencyCode} - {schedule.competencyName}
+        </div>
+        {postponed && (
+          <div className="text-xs text-red-600 mt-0.5">
+            Jadwal semula: Week {getWeekLabel(schedule.scheduledDate)},{" "}
+            {formatMonth(schedule.scheduledDate)} · terlambat {describeDelay(schedule, now)}
+          </div>
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <PlayCircle
+          className={`h-3.5 w-3.5 ${schedule.isStarted ? "text-green-600" : "text-gray-400"}`}
+        />
+        <Switch
+          checked={schedule.isStarted}
+          onCheckedChange={() => handleToggleStarted(schedule.id, schedule.isStarted)}
+          disabled={toggleLoading === schedule.id}
+          className="scale-75"
+        />
+      </div>
+    </div>
+  );
+
+  // `droppable` = minggu boleh jadi tujuan penjadwalan ulang (bulan riwayat tidak).
+  const renderMonth = (month: Date, droppable: boolean) => {
+    const monthKey = `${month.getFullYear()}-${month.getMonth()}`;
+    const isCollapsed = collapsedMonths.has(monthKey);
+    const total = countForMonth(month);
+
+    return (
+      <Card key={monthKey} className={`overflow-hidden ${droppable ? "" : "opacity-80"}`}>
+        <CardContent className="p-0">
+          <div
+            className="bg-muted p-4 border-b cursor-pointer hover:bg-muted/80 transition-colors"
+            onClick={() => toggleMonth(monthKey)}
+          >
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium">
+                {formatMonth(month)}
+                {!droppable && (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">(riwayat)</span>
+                )}
+              </h4>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">
+                  {total} training{total !== 1 ? "s" : ""}
+                </Badge>
+                {isCollapsed ? (
+                  <ChevronRight className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </div>
+            </div>
+          </div>
+
+          {!isCollapsed && (
+            <div className="p-4">
+              <div className="space-y-3">
+                {getWeekSlotsForMonth(month).map((weekSlot) => {
+                  const weekSchedules = getSchedulesForWeek(weekSlot);
+                  const weekKey = getWeekKey(month, weekSlot.weekLabel);
+                  // Minggu yang sudah lewat bukan tujuan penjadwalan ulang: jadwal yang dijatuhkan
+                  // di sana akan langsung dianggap tertunda lagi.
+                  const weekPassed = weekEnd(weekSlot.date).getTime() <= startOfToday.getTime();
+                  const canDrop = editMode && droppable && !weekPassed;
+                  const isWeekDragOver = dragOverWeek === weekKey;
+
+                  return (
+                    <div
+                      key={weekSlot.weekLabel}
+                      onDragOver={(e) => canDrop && handleDragOverWeek(e, weekKey)}
+                      onDragLeave={canDrop ? handleDragLeave : undefined}
+                      onDrop={(e) => canDrop && handleDropOnWeek(e, weekSlot)}
+                      className={`min-h-[60px] p-3 rounded-lg border-2 transition-all ${
+                        canDrop
+                          ? isWeekDragOver
+                            ? "border-blue-400 bg-blue-50"
+                            : "border-dashed border-gray-300 bg-gray-50/50"
+                          : "border-transparent bg-muted/30"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-12 text-center pt-1">
+                          <div className="text-lg font-bold">{weekSlot.weekLabel}</div>
+                          <div className="text-xs text-muted-foreground">Week</div>
+                        </div>
+
+                        <div className="flex-1 space-y-2">
+                          {weekSchedules.length > 0 ? (
+                            weekSchedules.map((schedule) => renderSchedule(schedule, false))
+                          ) : (
+                            <div className="text-xs text-muted-foreground italic py-2">
+                              {canDrop
+                                ? "Drop training here"
+                                : weekPassed && droppable
+                                  ? "Minggu sudah lewat"
+                                  : "No training scheduled"}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           {!editMode && (
-            <Button variant="outline" size="sm" onClick={() => setEditMode(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setEditMode(true);
+                // Rescheduling means dragging postponed items, so show them
+                setPostponedCollapsed(false);
+              }}
+            >
               <Edit className="h-4 w-4 mr-2" />
               Edit Schedules
             </Button>
@@ -389,6 +519,12 @@ export default function TrainingScheduleTimeline({
               Cancel
             </Button>
           )}
+          {layout.historyMonths.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={() => setShowHistory((v) => !v)}>
+              <History className="h-4 w-4 mr-2" />
+              {showHistory ? "Sembunyikan riwayat" : "Tampilkan riwayat"}
+            </Button>
+          )}
         </div>
         {onExportExcel && !editMode && (
           <Button onClick={onExportExcel} size="sm" className="gap-2">
@@ -398,141 +534,52 @@ export default function TrainingScheduleTimeline({
         )}
       </div>
 
-      <div className="space-y-4">
-        {monthsToDisplay.map((month, monthIndex) => {
-          const monthSchedules = getSchedulesForMonth(schedules, month);
-          const monthKey = `${month.getFullYear()}-${month.getMonth()}`;
-          const isCollapsed = collapsedMonths.has(monthKey);
-
-          return (
-            <Card key={monthIndex} className="overflow-hidden">
-              <CardContent className="p-0">
-                <div
-                  className="bg-muted p-4 border-b cursor-pointer hover:bg-muted/80 transition-colors"
-                  onClick={() => toggleMonth(monthKey)}
-                >
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium">
-                      {month.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-                    </h4>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        {monthSchedules.length} training{monthSchedules.length !== 1 ? "s" : ""}
-                      </Badge>
-                      {isCollapsed ? (
-                        <ChevronRight className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
-                    </div>
+      {layout.postponed.length > 0 && (
+        <Card className="overflow-hidden border-red-300 bg-red-50 py-0 gap-0">
+          <CardContent className="p-0">
+            <div
+              className={`bg-red-50 p-4 cursor-pointer ${postponedCollapsed ? "" : "border-b border-red-200"}`}
+              onClick={() => setPostponedCollapsed((v) => !v)}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                  <div>
+                    <h4 className="font-semibold text-red-800">Tertunda / Belum Dilaksanakan</h4>
+                    <p className="text-xs text-red-700">
+                      Jadwalnya sudah lewat tetapi training belum dimulai.{" "}
+                      {editMode
+                        ? "Seret ke salah satu minggu di bawah untuk menjadwal ulang."
+                        : "Mulai trainingnya, atau klik Edit Schedules untuk menjadwal ulang."}
+                    </p>
                   </div>
                 </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <Badge variant="destructive" className="text-xs">
+                    {layout.postponed.length} tertunda
+                  </Badge>
+                  {postponedCollapsed ? (
+                    <ChevronRight className="h-4 w-4 text-red-700" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-red-700" />
+                  )}
+                </div>
+              </div>
+            </div>
+            {!postponedCollapsed && (
+              <div className="p-4 space-y-2 bg-red-50 max-h-[28rem] overflow-y-auto">
+                {layout.postponed.map((schedule) => renderSchedule(schedule, true))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-                {!isCollapsed && (
-                  <div className="p-4">
-                    <div className="space-y-3">
-                      {getWeekSlotsForMonth(month).map((weekSlot) => {
-                        const weekSchedules = getSchedulesForWeek(schedules, weekSlot);
-                        const weekKey = getWeekKey(month, weekSlot.weekLabel);
-                        const isWeekDragOver = dragOverWeek === weekKey;
+      {showHistory && layout.historyMonths.length > 0 && (
+        <div className="space-y-4">{layout.historyMonths.map((m) => renderMonth(m, false))}</div>
+      )}
 
-                        return (
-                          <div
-                            key={weekSlot.weekLabel}
-                            onDragOver={(e) => editMode && handleDragOverWeek(e, weekKey)}
-                            onDragLeave={editMode ? handleDragLeave : undefined}
-                            onDrop={(e) => editMode && handleDropOnWeek(e, weekSlot)}
-                            className={`min-h-[60px] p-3 rounded-lg border-2 transition-all ${
-                              editMode
-                                ? isWeekDragOver
-                                  ? "border-blue-400 bg-blue-50"
-                                  : "border-dashed border-gray-300 bg-gray-50/50"
-                                : "border-transparent bg-muted/30"
-                            }`}
-                          >
-                            <div className="flex items-start gap-3">
-                              <div className="flex-shrink-0 w-12 text-center pt-1">
-                                <div className="text-lg font-bold">{weekSlot.weekLabel}</div>
-                                <div className="text-xs text-muted-foreground">Week</div>
-                              </div>
-
-                              <div className="flex-1 space-y-2">
-                                {weekSchedules.length > 0 ? (
-                                  weekSchedules.map((schedule) => {
-                                    const isScheduleOverdue = isOverdue(schedule);
-                                    return (
-                                      <div
-                                        key={schedule.id}
-                                        draggable={editMode}
-                                        onDragStart={(e) =>
-                                          editMode && handleDragStart(e, schedule)
-                                        }
-                                        onDragEnd={editMode ? handleDragEnd : undefined}
-                                        className={`flex items-center gap-3 p-2 rounded-md transition-all ${
-                                          editMode
-                                            ? `cursor-move ${
-                                                draggedItem?.id === schedule.id
-                                                  ? "opacity-50 bg-blue-200"
-                                                  : "bg-white hover:bg-gray-50 shadow-sm"
-                                              }`
-                                            : "bg-white shadow-sm"
-                                        } ${isScheduleOverdue ? "border border-red-300" : ""}`}
-                                      >
-                                        {isScheduleOverdue && (
-                                          <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" />
-                                        )}
-                                        <Badge
-                                          variant={
-                                            schedule.category === "M" ? "destructive" : "secondary"
-                                          }
-                                          className={`font-medium ${schedule.category !== "M" ? "bg-blue-500 text-white hover:bg-blue-600" : ""}`}
-                                        >
-                                          {schedule.category}
-                                        </Badge>
-                                        <div className="flex-1">
-                                          <div className="font-medium text-sm">
-                                            {schedule.trainingMaterial}
-                                          </div>
-                                          <div className="text-xs text-muted-foreground">
-                                            {schedule.competencyCode} - {schedule.competencyName}
-                                          </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <div className="flex items-center gap-1.5">
-                                            <PlayCircle
-                                              className={`h-3.5 w-3.5 ${schedule.isStarted ? "text-green-600" : "text-gray-400"}`}
-                                            />
-                                            <Switch
-                                              checked={schedule.isStarted}
-                                              onCheckedChange={() =>
-                                                handleToggleStarted(schedule.id, schedule.isStarted)
-                                              }
-                                              disabled={toggleLoading === schedule.id}
-                                              className="scale-75"
-                                            />
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })
-                                ) : (
-                                  <div className="text-xs text-muted-foreground italic py-2">
-                                    {editMode ? "Drop training here" : "No training scheduled"}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+      <div className="space-y-4">{layout.months.map((month) => renderMonth(month, true))}</div>
 
       <CourseNameDialog
         open={showCourseNameDialog}

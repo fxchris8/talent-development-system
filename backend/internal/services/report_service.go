@@ -902,32 +902,38 @@ func (service *ReportService) RefreshPersonalDataForAllReports() error {
 	}
 
 	updatedCount := 0
+	var unmatched []string
 	for _, report := range reports {
-		seamenCache, err := service.SeamenCacheRepo.GetBySeamanCode(report.SeamanCode)
-		if err != nil {
-			service.Log.Warnf("Seaman cache not found for %s: %v", report.SeamanCode, err)
+		seamenCache := service.findSeamenCache(report.SeamanCode, report.SeafarerCode)
+		if seamenCache == nil {
+			unmatched = append(unmatched, fmt.Sprintf("%s(%s)", report.SeamanCode, report.Nama))
 			continue
 		}
 
-		mutations, _ := service.MutationCacheRepo.GetAllBySeamanCode(report.SeamanCode)
-		vesselHistoryJSON := service.buildVesselHistoryJSON(mutations)
+		mutations, _ := service.MutationCacheRepo.GetAllBySeamanCode(seamenCache.SeamanCode)
+		updates := citrixReportUpdates(seamenCache, mutations)
 
-		startDate := service.parseStartDate(seamenCache.StartDate)
-
-		updates := map[string]interface{}{
-			"nama":          seamenCache.Name,
-			"tanggal_lahir": seamenCache.Birthdate,
-			"age":           seamenCache.Age,
-			"jabatan":       seamenCache.LastPosition,
-			"vessel_name":   seamenCache.LastLocation,
-			"seafarer_code": seamenCache.SeafarerCode,
-			"certificate":   seamenCache.Certificate,
-			"start_date":    startDate,
-			"vessel_history": vesselHistoryJSON,
+		// Program follows the position: enrol when there is no program yet, leave the
+		// program when CITRIX shows a promotion (never enrol into the next one automatically).
+		state, exited := ProgramState{
+			Program:       report.IDPProgram,
+			Status:        report.TrainingStatus,
+			ExitedProgram: report.ExitedProgram,
+		}.ApplyPosition(seamenCache.LastPosition)
+		if exited || programLevel(state.Program) > 0 {
+			updates["idp_program"] = state.Program
+			updates["training_status"] = state.Status
+			updates["exited_program"] = state.ExitedProgram
+		}
+		if exited {
+			updates["program_exited_at"] = time.Now()
+			updates["completed_before_exit"] = state.CompletedBeforeExit
+			service.Log.Infof("Report %s (%s) left %s: promoted to %s",
+				report.SeamanCode, report.Nama, state.ExitedProgram, seamenCache.LastPosition)
 		}
 
 		if err := service.DB.Model(&domain.Report{}).
-			Where("seaman_code = ?", report.SeamanCode).
+			Where("id = ?", report.ID).
 			Updates(updates).Error; err != nil {
 			service.Log.Errorf("Failed to update report %s: %v", report.SeamanCode, err)
 			continue
@@ -936,57 +942,36 @@ func (service *ReportService) RefreshPersonalDataForAllReports() error {
 		updatedCount++
 	}
 
+	if len(unmatched) > 0 {
+		sample := unmatched
+		if len(sample) > 20 {
+			sample = sample[:20]
+		}
+		service.Log.Warnf("%d report(s) not found in CITRIX seamen cache (first %d): %s",
+			len(unmatched), len(sample), strings.Join(sample, ", "))
+	}
 	service.Log.Infof("✅ Successfully updated %d reports", updatedCount)
 	return nil
 }
 
+// findSeamenCache matches a report to its CITRIX record: by seaman code (trimmed), then by
+// seafarer code when the seaman code does not match.
+func (service *ReportService) findSeamenCache(seamanCode, seafarerCode string) *domain.SeamenCache {
+	if code := strings.TrimSpace(seamanCode); code != "" {
+		if cache, err := service.SeamenCacheRepo.GetBySeamanCode(code); err == nil {
+			return cache
+		}
+	}
+	if code := strings.TrimSpace(seafarerCode); code != "" {
+		if cache, err := service.SeamenCacheRepo.GetBySeafarerCode(code); err == nil {
+			return cache
+		}
+	}
+	return nil
+}
+
 func (service *ReportService) buildVesselHistoryJSON(mutations []domain.MutationCache) string {
-	if len(mutations) == 0 {
-		return "[]"
-	}
-
-	// Build full JSON array with all fields
-	type VesselHistoryEntry struct {
-		TransactionDate string `json:"transaction_date"`
-		FromVessel      string `json:"from_vessel"`
-		ToVessel        string `json:"to_vessel"`
-		FromRank        string `json:"from_rank"`
-		ToRank          string `json:"to_rank"`
-		Type            string `json:"type"`
-	}
-
-	var entries []VesselHistoryEntry
-	for _, m := range mutations {
-		// Format transaction date
-		transactionDate := "-"
-		if !m.TransactionDate.IsZero() {
-			transactionDate = m.TransactionDate.Format("2006-01-02")
-		}
-
-		entry := VesselHistoryEntry{
-			TransactionDate: transactionDate,
-			FromVessel:      getStringOrDefault(m.FromVesselName, "-"),
-			ToVessel:        getStringOrDefault(m.ToVesselName, "-"),
-			FromRank:        getStringOrDefault(m.FromRankName, "-"),
-			ToRank:          getStringOrDefault(m.ToRankName, "-"),
-			Type:            getStringOrDefault(m.Jenis, "-"),
-		}
-		entries = append(entries, entry)
-	}
-
-	// Convert to JSON string
-	var result strings.Builder
-	result.WriteString("[")
-	for i, entry := range entries {
-		if i > 0 {
-			result.WriteString(",")
-		}
-		result.WriteString(fmt.Sprintf(`{"transaction_date":"%s","from_vessel":"%s","to_vessel":"%s","from_rank":"%s","to_rank":"%s","type":"%s"}`,
-			entry.TransactionDate, entry.FromVessel, entry.ToVessel, entry.FromRank, entry.ToRank, entry.Type))
-	}
-	result.WriteString("]")
-
-	return result.String()
+	return buildVesselHistoryJSON(mutations)
 }
 
 func getStringOrDefault(value, defaultValue string) string {
@@ -997,11 +982,5 @@ func getStringOrDefault(value, defaultValue string) string {
 }
 
 func (service *ReportService) parseStartDate(startDate string) *time.Time {
-	formats := []string{"02/01/2006", "2006-01-02", "02-01-2006"}
-	for _, format := range formats {
-		if t, err := time.Parse(format, startDate); err == nil {
-			return &t
-		}
-	}
-	return nil
+	return parseCitrixDate(startDate)
 }

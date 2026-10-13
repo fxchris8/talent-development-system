@@ -161,6 +161,15 @@ func (service *quizServiceImpl) SubmitQuiz(db *gorm.DB, request web.QuizSubmitRe
 		return web.QuizAttemptResponse{}, err
 	}
 
+	// The quiz page sends the seafarer code in this field. Only assigned seafarers may submit.
+	assigned, err := seafarerIsAssigned(db, request.SeamanCode, request.AssessmentTypeID)
+	if err != nil {
+		return web.QuizAttemptResponse{}, err
+	}
+	if !assigned {
+		return web.QuizAttemptResponse{}, ErrNotAssigned
+	}
+
 	// Calculate Score
 	totalScore := 0.0
 	maxScore := 0.0

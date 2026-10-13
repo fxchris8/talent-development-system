@@ -67,7 +67,40 @@ cp .env.prod.example .env.prod
 nano .env.prod
 ```
 
-**PENTING untuk .env.prod:**
+**Variabel yang WAJIB diisi di .env.prod** (lihat contoh lengkap di `.env.prod.example`):
+
+| Variabel | Untuk apa | Akibat bila kosong/salah |
+| :-- | :-- | :-- |
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Koneksi MySQL eksternal | Backend menunggu database terus-menerus dan tidak pernah start |
+| `JWT_SECRET` | Tanda tangan token login; dipakai backend DAN frontend (nilainya harus sama, sudah diatur compose) | Backend menolak start; semua user dilempar ke `/login` |
+| `NEXT_PUBLIC_API_ENDPOINT` | URL backend yang dipanggil browser. **Ditanam saat build image frontend** | Frontend memanggil `localhost:8080` |
+| `BACKEND_PUBLIC_URL` | URL backend untuk link file PPT/PDF materi yang disimpan ke database | Link materi mengarah ke `localhost` |
+| `FRONTEND_URL` | Redirect setelah login SSO | Redirect ke `localhost:3000` |
+| `SSO_*` | Login SSO (kosongkan semua bila tidak dipakai) | Tombol SSO tidak berfungsi |
+| `OPENROUTER_API_KEY` | Generate materi PPT/PDF dan quiz | Fitur generate gagal |
+
+Catatan:
+
+- Login memakai cookie. Cookie hanya diberi tanda `Secure` bila request datang lewat HTTPS, jadi
+  server yang diakses lewat `http://` tetap bisa login. Bila memakai reverse proxy HTTPS (nginx,
+  Traefik), pastikan proxy mengirim header `X-Forwarded-Proto: https`.
+- Frontend dan backend harus berada di domain induk yang sama (mis. `app.domain.com` dan
+  `api.domain.com`, atau host yang sama dengan port berbeda) supaya cookie login ikut terkirim.
+- Migrasi database berjalan otomatis setiap backend start (menambah tabel/kolom baru, tidak
+  menghapus data). Rilis ini menambah kolom `training_status`, `exited_program`,
+  `program_exited_at` pada tabel `reports`.
+- API hanya menerima panggilan browser dari frontend: origin yang cocok dengan `FRONTEND_URL`
+  (atau `CORS_ALLOWED_ORIGINS`), atau yang satu situs dengan API (host sama, atau domain induk
+  sama). Bila frontend ditolak, log backend menulis `CORS: origin ... ditolak` beserta
+  variabel yang harus diisi.
+- Seeder berjalan setiap backend start dengan `SEED_ON_START=auto`: hanya tabel yang masih
+  kosong yang diisi, jadi data yang sudah dihapus admin tidak muncul lagi. Pakai `always`
+  untuk perilaku lama (membuat ulang semua baris seed yang hilang) atau `never` untuk
+  mematikannya.
+- Materi hasil generate disimpan di volume `backend_materi`, gambar soal di `backend_storage`.
+  Jangan jalankan `docker compose down -v` di production: itu menghapus kedua volume tersebut.
+
+**Membuat nilai rahasia:**
 
 ```bash
 # Generate JWT secret yang kuat
@@ -80,8 +113,8 @@ openssl rand -base64 24
 ### 4. Build dan Deploy
 
 ```bash
-# Build images
-docker-compose -f docker-compose.prod.yml build
+# Build images (WAJIB memakai --env-file: NEXT_PUBLIC_API_ENDPOINT ditanam saat build)
+docker-compose -f docker-compose.prod.yml --env-file .env.prod build
 
 # Start services
 docker-compose -f docker-compose.prod.yml --env-file .env.prod up -d
@@ -99,9 +132,27 @@ docker-compose -f docker-compose.prod.yml ps
 # Test health check
 curl http://localhost:8080/health
 
-# Test frontend
-curl http://localhost:3000
+# Test frontend (harus 200; halaman lain akan redirect ke /login)
+curl -I http://localhost:3000/login
+
+# Pastikan migrasi & start backend bersih
+docker-compose -f docker-compose.prod.yml logs tds_backend | grep -iE "migrat|fatal|error" | tail -20
+
+# Layanan suara materi (harus {"status": "ok", ...})
+docker exec tds_backend_prod curl -s http://tds_tts:5002/health
 ```
+
+Catatan:
+
+- **Migrasi gagal = backend tidak start.** `entrypoint.sh` menghentikan container bila `./migrate`
+  gagal, supaya API tidak jalan di atas skema yang setengah jadi. Baca error migrasinya di log.
+- **Suara materi (`tds_tts`).** Container ini membacakan materi training dalam Bahasa Indonesia
+  (mesin Piper, offline, tanpa API key). Model suara (~60 MB) diunduh saat build, jadi server
+  butuh internet saat `build` saja. Audio dibuat sekali per materi (sekitar 1 menit untuk
+  materi 15-20 menit), lalu disimpan di volume `backend_materi` sebagai `...-narasi.mp3`.
+- **Login dibatasi.** 5 password salah dalam 10 menit mengunci pasangan IP + username selama
+  10 menit (disimpan di memori, reset saat backend restart). Bila backend berada di belakang
+  reverse proxy, pastikan proxy meneruskan IP asli klien (`X-Forwarded-For`).
 
 ---
 

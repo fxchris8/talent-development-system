@@ -27,6 +27,7 @@ import Image from "next/image";
 import { toast } from "sonner";
 import { api } from "@/app/lib/api";
 import { useUploadAssessmentImage } from "./_hooks/useAssessment";
+import { isValidImageUrl, resolveImageUrl } from "@/app/lib/image";
 import { useGetAspectsByAssessmentId } from "./_hooks/useAspect";
 import { AspectResponse } from "@/types/aspect";
 
@@ -169,7 +170,9 @@ export default function QuestionDialog({
         setFormData({
           questionText: question.questionText,
           category: question.category || "",
-          isImage: question.isImage || "0",
+          // Soal lama bisa punya gambar walau flag-nya "0": ikuti keberadaan gambarnya,
+          // supaya gambar tampil (dan tidak terhapus diam-diam saat disimpan).
+          isImage: isValidImageUrl(question.imageUrl) ? "1" : question.isImage || "0",
           imageUrl: question.imageUrl || "",
           aspectId: question.aspectId || 0,
           questionType: inferredType,
@@ -269,6 +272,8 @@ export default function QuestionDialog({
     setQuestionImageFile(null);
     setQuestionImagePreview("");
     setFormData({ ...formData, imageUrl: "" });
+    const input = document.getElementById("questionImage") as HTMLInputElement | null;
+    if (input) input.value = "";
   };
 
   const handleSubmit = async () => {
@@ -310,7 +315,8 @@ export default function QuestionDialog({
 
     setLoading(true);
     try {
-      let imageUrl = formData.imageUrl;
+      // "Memiliki Gambar: Tidak" berarti gambar yang tersimpan ikut dihapus
+      let imageUrl = formData.isImage === "1" ? formData.imageUrl : "";
 
       // Upload image if one was selected
       if (questionImageFile && formData.isImage === "1") {
@@ -343,6 +349,7 @@ export default function QuestionDialog({
           return {
             ...option,
             imageUrl: optionImageUrl,
+            isImage: optionImageUrl ? 1 : 0,
           };
         })
       );
@@ -557,9 +564,21 @@ export default function QuestionDialog({
       imageFile: null,
       imagePreview: "",
       imageUrl: "",
+      isImage: 0,
     };
     setOptions(updatedOptions);
+    const input = document.getElementById(`optionImage-${index}`) as HTMLInputElement | null;
+    if (input) input.value = "";
   };
+
+  // Gambar yang ditampilkan: file baru yang dipilih, atau gambar yang sudah tersimpan.
+  const questionImageSrc =
+    questionImagePreview ||
+    (isValidImageUrl(formData.imageUrl) ? resolveImageUrl(formData.imageUrl) : "");
+
+  const getOptionImageSrc = (option: Option): string =>
+    option.imagePreview ||
+    (isValidImageUrl(option.imageUrl) ? resolveImageUrl(option.imageUrl as string) : "");
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
@@ -697,21 +716,25 @@ export default function QuestionDialog({
                     <div className="col-span-2 gap-2">
                       <Label className="text-sm font-medium">Upload Gambar</Label>
 
-                      {questionImagePreview && (
+                      {questionImageSrc && (
                         <div className="relative w-full h-40 bg-gray-100 rounded-lg overflow-hidden mt-2 mb-3">
                           <Image
-                            src={questionImagePreview}
-                            alt="Preview"
+                            src={questionImageSrc}
+                            alt="Gambar soal"
                             fill
                             unoptimized
-                            className="object-cover"
+                            className="object-contain"
                           />
                           <button
                             onClick={handleRemoveQuestionImage}
-                            className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                            disabled={loading}
+                            title="Hapus gambar"
+                            aria-label="Hapus gambar soal"
+                            className="absolute top-2 right-2 flex items-center gap-1 bg-red-500 text-white rounded-full px-2 py-1 text-xs hover:bg-red-600 disabled:opacity-50"
                             type="button"
                           >
                             <X className="h-4 w-4" />
+                            Hapus
                           </button>
                         </div>
                       )}
@@ -885,21 +908,25 @@ export default function QuestionDialog({
                             Gambar Opsi (Opsional)
                           </Label>
 
-                          {option.imagePreview && (
+                          {getOptionImageSrc(option) && (
                             <div className="relative w-full h-28 bg-gray-100 rounded-lg overflow-hidden mb-2">
                               <Image
-                                src={option.imagePreview}
-                                alt={`Preview Opsi ${option.optionLetter}`}
+                                src={getOptionImageSrc(option)}
+                                alt={`Gambar Opsi ${option.optionLetter}`}
                                 fill
                                 unoptimized
-                                className="object-cover"
+                                className="object-contain"
                               />
                               <button
                                 onClick={() => handleRemoveOptionImage(index)}
-                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                                disabled={loading}
+                                title="Hapus gambar"
+                                aria-label={`Hapus gambar opsi ${option.optionLetter}`}
+                                className="absolute top-1 right-1 flex items-center gap-1 bg-red-500 text-white rounded-full px-2 py-1 text-xs hover:bg-red-600 disabled:opacity-50"
                                 type="button"
                               >
                                 <X className="h-3 w-3" />
+                                Hapus
                               </button>
                             </div>
                           )}

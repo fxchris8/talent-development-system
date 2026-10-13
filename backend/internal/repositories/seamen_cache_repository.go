@@ -55,6 +55,14 @@ func (r *SeamenCacheRepository) GetBySeamanCode(seamanCode string) (*domain.Seam
 	return &cache, nil
 }
 
+func (r *SeamenCacheRepository) GetBySeafarerCode(seafarerCode string) (*domain.SeamenCache, error) {
+	var cache domain.SeamenCache
+	if err := r.DB.Where("seafarer_code = ?", seafarerCode).First(&cache).Error; err != nil {
+		return nil, err
+	}
+	return &cache, nil
+}
+
 func (r *SeamenCacheRepository) GetAll() ([]domain.SeamenCache, error) {
 	var caches []domain.SeamenCache
 	if err := r.DB.Find(&caches).Error; err != nil {

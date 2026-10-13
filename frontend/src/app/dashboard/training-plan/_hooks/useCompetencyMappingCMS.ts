@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { BASE_URL } from "@/app/lib/api";
+import { authFetch } from "@/app/lib/auth-fetch";
 
 const API_BASE = BASE_URL;
 
@@ -50,7 +51,7 @@ export function useGetAllTrainings() {
   return useQuery({
     queryKey: ["trainings", "all"],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/api/trainings`);
+      const response = await authFetch(`${API_BASE}/api/trainings`);
       if (!response.ok) {
         throw new Error("Failed to fetch trainings");
       }
@@ -65,7 +66,7 @@ export function useGetCompetencyMappings(program: string) {
   return useQuery({
     queryKey: ["competency-mappings", program],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/api/competency-mappings?program=${program}`);
+      const response = await authFetch(`${API_BASE}/api/competency-mappings?program=${program}`);
       if (!response.ok) {
         throw new Error("Failed to fetch competency mappings");
       }
@@ -82,7 +83,7 @@ export function useCreateCompetencyMapping() {
 
   return useMutation({
     mutationFn: async (data: CompetencyMappingFormData) => {
-      const response = await fetch(`${API_BASE}/api/competency-mappings`, {
+      const response = await authFetch(`${API_BASE}/api/competency-mappings`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -112,7 +113,7 @@ export function useUpdateCompetencyMapping() {
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: number; data: CompetencyMappingFormData }) => {
-      const response = await fetch(`${API_BASE}/api/competency-mappings/${id}`, {
+      const response = await authFetch(`${API_BASE}/api/competency-mappings/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -143,7 +144,7 @@ export function useDeleteCompetencyMapping() {
 
   return useMutation({
     mutationFn: async (id: number) => {
-      const response = await fetch(`${API_BASE}/api/competency-mappings/${id}`, {
+      const response = await authFetch(`${API_BASE}/api/competency-mappings/${id}`, {
         method: "DELETE",
       });
 

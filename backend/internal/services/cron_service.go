@@ -1,6 +1,9 @@
 package services
 
 import (
+	"errors"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -14,6 +17,8 @@ type CronService struct {
 	ApolloAPIService      *ApolloAPIService
 	NanikaAPIService      *NanikaAPIService
 	BatchSnapshotService  *BatchSnapshotService
+	ReportService         *ReportService
+	syncMu                sync.Mutex
 }
 
 func NewCronService(
@@ -22,6 +27,7 @@ func NewCronService(
 	apolloAPIService *ApolloAPIService,
 	nanikaAPIService *NanikaAPIService,
 	batchSnapshotService *BatchSnapshotService,
+	reportService *ReportService,
 ) *CronService {
 	// Create cron with seconds support
 	c := cron.New(cron.WithSeconds())
@@ -33,7 +39,32 @@ func NewCronService(
 		ApolloAPIService:      apolloAPIService,
 		NanikaAPIService:      nanikaAPIService,
 		BatchSnapshotService:  batchSnapshotService,
+		ReportService:         reportService,
 	}
+}
+
+// ErrCitrixSyncRunning is returned when a CITRIX sync is already in progress.
+var ErrCitrixSyncRunning = errors.New("sinkronisasi CITRIX sedang berjalan")
+
+// RunCitrixSync pulls seamen + mutation data from CITRIX into the cache tables
+// and refreshes reports from them. It is shared by the cron job and the manual
+// sync endpoint, and never runs twice at the same time.
+func (s *CronService) RunCitrixSync() error {
+	if !s.syncMu.TryLock() {
+		return ErrCitrixSyncRunning
+	}
+	defer s.syncMu.Unlock()
+
+	if err := s.NanikaAPIService.FetchAndCacheSeamenData(); err != nil {
+		return fmt.Errorf("gagal mengambil data seamen: %w", err)
+	}
+	if err := s.NanikaAPIService.FetchAndCacheMutationData(); err != nil {
+		return fmt.Errorf("gagal mengambil data mutasi: %w", err)
+	}
+	if err := s.ReportService.RefreshPersonalDataForAllReports(); err != nil {
+		return fmt.Errorf("gagal memperbarui report: %w", err)
+	}
+	return nil
 }
 
 func (s *CronService) Start() error {
@@ -52,14 +83,12 @@ func (s *CronService) Start() error {
 		return err
 	}
 
-	// TESTING: Fetch Nanika API every 10 minutes (change to "0 0 2 * * *" for production)
+	// Fetch CITRIX (Nanika) data every 10 minutes, then refresh reports
 	_, err = s.cron.AddFunc("0 */10 * * * *", func() {
-		s.log.Info("⏰ [CRON TRIGGERED] Fetching Nanika API every 10 minutes (TESTING MODE)...")
-		if err := s.NanikaAPIService.FetchAndCacheSeamenData(); err != nil {
-			s.log.Errorf("❌ Failed to fetch seamen data: %v", err)
-		}
-		if err := s.NanikaAPIService.FetchAndCacheMutationData(); err != nil {
-			s.log.Errorf("❌ Failed to fetch mutation data: %v", err)
+		s.log.Info("⏰ [CRON TRIGGERED] Fetching Nanika API every 10 minutes...")
+		if err := s.RunCitrixSync(); err != nil {
+			s.log.Errorf("❌ CITRIX sync failed: %v", err)
+			return
 		}
 		s.log.Info("✅ [CRON FINISHED] Nanika API sync completed")
 	})

@@ -38,11 +38,7 @@ func (controller *QuizController) GetQuizData(ctx *gin.Context) {
 
 	quizData, err := controller.QuizService.GetQuizData(controller.DB, assessmentTypeId)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -69,11 +65,7 @@ func (controller *QuizController) SubmitQuiz(ctx *gin.Context) {
 
 	result, err := controller.QuizService.SubmitQuiz(controller.DB, request)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -90,11 +82,7 @@ func (controller *QuizController) GetQuizHistory(ctx *gin.Context) {
 
 	attempts, err := controller.QuizService.GetQuizHistory(controller.DB, seamanCode)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 
@@ -119,11 +107,7 @@ func (controller *QuizController) GetQuizAttempt(ctx *gin.Context) {
 
 	attempt, err := controller.QuizService.GetQuizAttempt(controller.DB, attemptId)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResponse{
-			Code:   http.StatusInternalServerError,
-			Status: "INTERNAL SERVER ERROR",
-			Error:  err.Error(),
-		})
+		respondServiceError(ctx, err)
 		return
 	}
 

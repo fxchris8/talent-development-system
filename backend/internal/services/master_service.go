@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"backend/internal/helpers"
 	"backend/internal/models/converter"
 	"backend/internal/models/domain"
 	"backend/internal/models/web"
@@ -154,6 +155,9 @@ func (s *MasterService) FindAll(req web.MasterListRequest) (*web.SuccessResponse
 		return nil, fmt.Errorf("failed to retrieve master reports: %w", err)
 	}
 
+	// --- complete blank personal columns from CITRIX so rows are never shown empty ---
+	s.overlayCitrixData(rows)
+
 	// --- reverse if prev (so UI order stays ascending) ---
 	if req.Page == "prev" && len(rows) > 1 {
 		for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
@@ -232,6 +236,8 @@ func (s *MasterService) FindAll(req web.MasterListRequest) (*web.SuccessResponse
 			Strength:                   r.Strength,
 			TalentClassified:           r.TalentClassified,
 			IDPProgram:                 r.IDPProgram,
+			TrainingStatus:             domain.EffectiveTrainingStatus(r.IDPProgram, r.TrainingStatus),
+			ExitedProgram:              r.ExitedProgram,
 			HavQuadran2:                r.HavQuadran2,
 			TalentClassified2:          r.TalentClassified2,
 			Readiness:                  r.Readiness,
@@ -587,6 +593,28 @@ func (s *MasterService) Create(request *web.MasterReportData) (*web.SuccessRespo
 		}
 	}
 
+	// Fill the row from CITRIX (seamen_cache + mutation_cache): the lookup in the form only sends
+	// the name and seaman code, so without this every other column is created empty.
+	if master.SeamanCode != nil && strings.TrimSpace(*master.SeamanCode) != "" {
+		code := strings.TrimSpace(*master.SeamanCode)
+		var cache domain.SeamenCache
+		if err := s.DB.Where("seaman_code = ?", code).First(&cache).Error; err == nil {
+			var mutations []domain.MutationCache
+			if err := s.DB.Where("seaman_code = ?", code).Order("transaction_date DESC").Find(&mutations).Error; err != nil {
+				s.Log.WithError(err).Warn("failed to load mutation history from CITRIX cache")
+			}
+			FillReportFromCitrix(master, &cache, mutations)
+		} else {
+			s.Log.WithField("seaman_code", code).Warn("seaman code not found in CITRIX cache; creating report without CITRIX data")
+		}
+	}
+
+	// IDP program follows the position (MUALIM III/MASINIS IV=FDP, MUALIM II/MASINIS III=MDP,
+	// MUALIM I/MASINIS II=SDP); other positions get no program.
+	state, _ := ProgramState{Program: helpers.PtrToString(master.IDPProgram)}.ApplyPosition(helpers.PtrToString(master.Jabatan))
+	master.IDPProgram = nullifyStringPtr(&state.Program)
+	master.TrainingStatus = nullifyStringPtr(&state.Status)
+
 	// Context: User wants new reports to be assigned to the currently filtered batch (if any)
 	// We assume the BatchID is passed in the request body (MasterReportData)
 	if request.BatchID != nil && *request.BatchID > 0 {
@@ -706,7 +734,37 @@ func (s *MasterService) Update(id uint, request *web.UpdateMasterRequest) (*web.
 		existing.Certificate = nullifyStringPtr(request.Certificate)
 	}
 	if request.IDPProgram != nil {
+		newProgram := strings.ToUpper(strings.TrimSpace(*request.IDPProgram))
+		oldProgram := strings.ToUpper(strings.TrimSpace(helpers.PtrToString(existing.IDPProgram)))
 		existing.IDPProgram = nullifyStringPtr(request.IDPProgram)
+		// Choosing a program by hand (re-)enrols the person, also after they left one.
+		if programLevel(newProgram) > 0 && newProgram != oldProgram {
+			ongoing := domain.TrainingStatusOngoing
+			existing.TrainingStatus = &ongoing
+			existing.ExitedProgram = nil
+			existing.ProgramExitedAt = nil
+			notCompleted := false
+			existing.CompletedBeforeExit = &notCompleted
+		}
+	}
+	if request.Jabatan != nil {
+		// A position edited by hand follows the same promotion rule as a CITRIX sync.
+		state, exited := ProgramState{
+			Program:       helpers.PtrToString(existing.IDPProgram),
+			Status:        helpers.PtrToString(existing.TrainingStatus),
+			ExitedProgram: helpers.PtrToString(existing.ExitedProgram),
+		}.ApplyPosition(helpers.PtrToString(existing.Jabatan))
+		if exited || programLevel(state.Program) > 0 {
+			existing.IDPProgram = nullifyStringPtr(&state.Program)
+			existing.TrainingStatus = nullifyStringPtr(&state.Status)
+			existing.ExitedProgram = nullifyStringPtr(&state.ExitedProgram)
+			if exited {
+				now := time.Now()
+				existing.ProgramExitedAt = &now
+				completed := state.CompletedBeforeExit
+				existing.CompletedBeforeExit = &completed
+			}
+		}
 	}
 	if request.PerformanceScore != nil {
 		existing.PerformanceScore = request.PerformanceScore
@@ -1078,4 +1136,34 @@ func (s *MasterService) GetMentoringProgramsByPersonName(personName string) (*we
 		Status: "OK",
 		Data:   result,
 	}, nil
+}
+
+// overlayCitrixData fills blank vessel/position/age/certificate/... of the given rows from
+// seamen_cache, with a single query for the whole page. It is read-only (nothing is saved);
+// "Refresh Personal Data" / the CITRIX sync still persist the values.
+func (s *MasterService) overlayCitrixData(rows []domain.MasterReport) {
+	codes := make([]string, 0, len(rows))
+	for _, r := range rows {
+		if code := strings.TrimSpace(r.SeamanCode); code != "" {
+			codes = append(codes, code)
+		}
+	}
+	if len(codes) == 0 {
+		return
+	}
+
+	var caches []domain.SeamenCache
+	if err := s.DB.Where("seaman_code IN ?", codes).Find(&caches).Error; err != nil {
+		s.Log.WithError(err).Warn("failed to load CITRIX data for master rows")
+		return
+	}
+	byCode := make(map[string]*domain.SeamenCache, len(caches))
+	for i := range caches {
+		byCode[caches[i].SeamanCode] = &caches[i]
+	}
+	for i := range rows {
+		if cache, ok := byCode[strings.TrimSpace(rows[i].SeamanCode)]; ok {
+			overlayCitrixOnMasterRow(&rows[i], cache)
+		}
+	}
 }
