@@ -247,7 +247,7 @@ export default function MasterPage({
     "Vessel Name",
     "Position",
     "IDP Program",
-    "Training Status",
+    "Development Status",
     "Age",
     "Certificate",
     "Kondite Review",
@@ -679,7 +679,7 @@ export default function MasterPage({
             className="w-[280px] bg-white shadow-sm"
           />
 
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 ml-auto">
             <Button
               size="sm"
               variant="default"
@@ -1791,6 +1791,7 @@ export default function MasterPage({
                     <TableCell className="text-center text-xs">
                       <TrainingStatusBadge
                         status={row.trainingStatus}
+                        program={row.idpProgram}
                         exitedProgram={row.exitedProgram}
                       />
                     </TableCell>

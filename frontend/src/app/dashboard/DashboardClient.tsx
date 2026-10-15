@@ -367,7 +367,7 @@ export default function DashboardClient() {
               <TableHead>Nama Talent</TableHead>
               <TableHead>Rank</TableHead>
               <TableHead className="text-center">Program</TableHead>
-              <TableHead className="text-center">Status Training</TableHead>
+              <TableHead className="text-center">Development Status</TableHead>
               <TableHead className="pr-4 text-right">Talent Readiness</TableHead>
             </TableRow>
           </TableHeader>
@@ -421,6 +421,7 @@ export default function DashboardClient() {
                   <TableCell className="text-center">
                     <TrainingStatusBadge
                       status={report.trainingStatus}
+                      program={report.idpProgram}
                       exitedProgram={report.exitedProgram}
                     />
                   </TableCell>
