@@ -2,7 +2,6 @@ version: "3.8"
 
 volumes:
   backend_storage:
-  backend_materi:
 
 services:
   tds_backend:
@@ -10,65 +9,43 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    env_file: .env
     restart: always
+
     environment:
-      # Database connection - EXTERNAL DATABASE
-      DB_HOST: ${DB_HOST} # IP atau hostname database eksternal
+      DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT:-3306}
       DB_USER: ${DB_USER}
       DB_PASS: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME:-tds}
 
-      # Application settings
+      SSO_BASE_URL: ${SSO_BASE_URL:-http://host.docker.internal:5000}
+      SSO_FRONTEND_URL: ${SSO_FRONTEND_URL:-http://localhost:5173}
+      SSO_CLIENT_ID: ${SSO_CLIENT_ID:-client_29f1ebacc189d8f2162d95ea63acd6a5}
+      SSO_CLIENT_SECRET: ${SSO_CLIENT_SECRET:-b919281f18a32cc008ba63016f7d89042bb006f1ae5f0748ab83049a1d8698d4}
+      SSO_CALLBACK_URL: ${SSO_CALLBACK_URL:-https://pe.spil.co.id/tds-api/api/auth/sso/callback}
+      FRONTEND_URL: ${FRONTEND_URL:-https://pe.spil.co.id/tds}
+
       WEB_PORT: 8080
       ENV: production
       GIN_MODE: release
-      # Jadwal cron (sync CITRIX, readiness) dan perhitungan "hari ini" mengikuti WIB
-      TZ: Asia/Jakarta
-      # 2=error 3=warn 4=info 5=debug
-      LOG_LEVEL: ${LOG_LEVEL:-4}
 
-      # URL publik: dipakai untuk link file PPT/PDF yang disimpan ke database dan
-      # redirect setelah login SSO. WAJIB diisi, kalau kosong link mengarah ke localhost.
-      BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-${NEXT_PUBLIC_API_ENDPOINT:-http://localhost:8080}}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
-      # Origin tambahan yang boleh memanggil API (pisahkan dengan koma), opsional
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
-      # Seeder: auto = hanya mengisi tabel yang masih kosong (aman untuk production)
-      SEED_ON_START: ${SEED_ON_START:-auto}
-
-      # SSO (kosongkan semuanya bila tidak memakai SSO)
-      SSO_BASE_URL: ${SSO_BASE_URL:-}
-      SSO_FRONTEND_URL: ${SSO_FRONTEND_URL:-}
-      SSO_CLIENT_ID: ${SSO_CLIENT_ID:-}
-      SSO_CLIENT_SECRET: ${SSO_CLIENT_SECRET:-}
-      SSO_CALLBACK_URL: ${SSO_CALLBACK_URL:-}
-
-      # Layanan suara materi (container tds_tts di bawah)
-      TTS_URL: http://tds_tts:5002
-
-      # API Apollo (riwayat training); kosong = default di kode
-      APOLLO_API_BASE_URL: ${APOLLO_API_BASE_URL:-}
-
-      # Security
       JWT_SECRET_KEY: ${JWT_SECRET}
-      # AI generator (LLM via OpenRouter: materi PPT/PDF, quiz)
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
-      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-}
-      MODEL_PROVIDER: ${MODEL_PROVIDER:-}
 
-      # LLM API (if using)
-      GROQ_API_KEY: ${GROQ_API_KEY}
-    ports:
-      - "8080:8080"
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL}
+
+      BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-https://pe.spil.co.id/tds-api}
+
     volumes:
       - backend_storage:/app/storage
-      # Materi PPT/PDF hasil generate; tanpa volume ini file hilang setiap redeploy
-      - backend_materi:/app/public/materi
-      # NOTE: NO bind mount untuk source code di production!
+
+    expose:
+      - "8080"
+
     networks:
-      - tds-net
+      - traefik-net
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -76,15 +53,18 @@ services:
       retries: 3
       start_period: 40s
 
-  # Suara materi training: mesin text-to-speech neural (Piper) berbahasa Indonesia, offline
-  tds_tts:
-    container_name: tds_tts_prod
-    build:
-      context: ./tts
-      dockerfile: Dockerfile
-    restart: always
-    networks:
-      - tds-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.tds-backend.rule=Host(`pe.spil.co.id`) && PathPrefix(`/tds-api`)"
+      - "traefik.http.routers.tds-backend.entrypoints=websecure"
+      - "traefik.http.routers.tds-backend.tls=true"
+      - "traefik.http.routers.tds-backend.middlewares=strip-tds-api"
+      - "traefik.http.middlewares.strip-tds-api.stripprefix.prefixes=/tds-api"
+      - "traefik.http.services.tds-backend.loadbalancer.server.port=8080"
+    extra_hosts:
+      - "pe.spil.co.id:host-gateway"
+      - "px.spil.co.id:host-gateway"
 
   tds_frontend:
     container_name: tds_frontend_prod
@@ -92,24 +72,37 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.prod
       args:
-        NEXT_PUBLIC_API_ENDPOINT: ${NEXT_PUBLIC_API_ENDPOINT:-http://localhost:8080}
-        NEXT_PUBLIC_SSO_CLIENT_ID: ${SSO_CLIENT_ID:-}
+        NEXT_PUBLIC_API_ENDPOINT: ${NEXT_PUBLIC_API_ENDPOINT:-https://pe.spil.co.id/tds-api}
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-}
+
+    env_file: .env
     restart: always
+
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_ENDPOINT: ${NEXT_PUBLIC_API_ENDPOINT:-http://localhost:8080}
-      # Harus SAMA dengan JWT_SECRET_KEY backend: dipakai untuk memeriksa cookie login di
-      # halaman terproteksi. Kalau kosong/berbeda, semua user dilempar balik ke /login.
+      NEXT_PUBLIC_API_ENDPOINT: ${NEXT_PUBLIC_API_ENDPOINT:-https://pe.spil.co.id/tds-api}
+      NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-}
       JWT_SECRET: ${JWT_SECRET}
-    ports:
-      - "3000:3000"
-    # NOTE: NO volumes/bind mount untuk source code di production!
+
     depends_on:
       tds_backend:
         condition: service_healthy
+
     networks:
-      - tds-net
+      - traefik-net
+
+    expose:
+      - "3000"
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.tds-frontend.rule=Host(`pe.spil.co.id`) && PathPrefix(`/tds`)"
+      - "traefik.http.routers.tds-frontend.entrypoints=websecure"
+      - "traefik.http.routers.tds-frontend.tls=true"
+      - "traefik.http.services.tds-frontend.loadbalancer.server.port=3000"
 
 networks:
-  tds-net:
-    driver: bridge
+  traefik-net:
+    name: traefik-net
+    external: true
