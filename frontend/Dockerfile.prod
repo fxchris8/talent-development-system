@@ -8,8 +8,6 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-ENV NODE_ENV=production
-
 # Accept build arguments
 ARG NEXT_PUBLIC_API_ENDPOINT=http://localhost:8080
 ENV NEXT_PUBLIC_API_ENDPOINT=$NEXT_PUBLIC_API_ENDPOINT
@@ -21,8 +19,10 @@ ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install all dependencies (including devDependencies for build)
-RUN npm ci
+# Install all dependencies (including devDependencies for build, skip git hooks like husky)
+RUN npm ci --include=dev --ignore-scripts
+
+ENV NODE_ENV=production
 
 # Copy source code
 COPY . .

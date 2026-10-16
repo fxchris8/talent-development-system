@@ -12,8 +12,8 @@ RUN apk add --no-cache libc6-compat
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install all dependencies (including devDependencies for hot reload)
-RUN npm ci
+# Install all dependencies (including devDependencies for hot reload, skip husky)
+RUN npm ci --ignore-scripts
 
 # Expose port
 EXPOSE 3000
