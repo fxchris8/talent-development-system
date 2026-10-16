@@ -72,7 +72,8 @@ export function useLogin() {
 
       // Navigate to dashboard with window.location to ensure full page reload
       // This prevents RSC issues and ensures middleware runs properly
-      window.location.href = "/dashboard";
+      const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+      window.location.href = `${basePath}/dashboard`;
     },
     onError: (error) => {
       // Handle login error
@@ -105,7 +106,8 @@ export function useLogout() {
       toast.success("Logout berhasil!");
 
       // Navigate to login with window.location to ensure full page reload
-      window.location.href = "/login";
+      const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+      window.location.href = `${basePath}/login`;
     },
     onError: (error) => {
       // Handle logout error
@@ -115,7 +117,8 @@ export function useLogout() {
       // Even if logout fails on server, clear local state
       cookies.remove("Authorization", { path: "/" });
       setUser(null);
-      window.location.href = "/login";
+      const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+      window.location.href = `${basePath}/login`;
     },
   });
 }

@@ -34,9 +34,10 @@ function SSOCallbackPageContent() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
+    const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
     const token = searchParams.get("token");
     if (!token) {
-      window.location.href = "/login?sso_error=Missing+token+from+callback";
+      window.location.href = `${basePath}/login?sso_error=Missing+token+from+callback`;
       return;
     }
 
@@ -57,7 +58,7 @@ function SSOCallbackPageContent() {
       );
     }
 
-    window.location.href = "/dashboard";
+    window.location.href = `${basePath}/dashboard`;
   }, [searchParams]);
 
   return (

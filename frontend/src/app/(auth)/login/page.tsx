@@ -59,7 +59,7 @@ function PageContent() {
   const handleSsoLogin = React.useCallback(() => {
     const apiBase = process.env.NEXT_PUBLIC_API_ENDPOINT || window.location.origin;
     const params = new URLSearchParams();
-    const clientID = searchParams.get("client_id");
+    const clientID = searchParams.get("client_id") || process.env.NEXT_PUBLIC_SSO_CLIENT_ID;
     if (clientID) {
       params.set("client_id", clientID);
     }
@@ -72,8 +72,11 @@ function PageContent() {
   React.useEffect(() => {
     const shouldAutoSSO = searchParams.get("login_sso") === "true";
     const clientID = searchParams.get("client_id");
-    if (shouldAutoSSO && clientID === process.env.NEXT_PUBLIC_SSO_CLIENT_ID) {
-      handleSsoLogin();
+    const configuredID = process.env.NEXT_PUBLIC_SSO_CLIENT_ID;
+    if (shouldAutoSSO) {
+      if (!configuredID || clientID === configuredID || !clientID) {
+        handleSsoLogin();
+      }
     }
   }, [handleSsoLogin, searchParams]);
 

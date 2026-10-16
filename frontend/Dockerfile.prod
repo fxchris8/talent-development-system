@@ -8,11 +8,15 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+ENV NODE_ENV=production
+
 # Accept build arguments
 ARG NEXT_PUBLIC_API_ENDPOINT=http://localhost:8080
 ENV NEXT_PUBLIC_API_ENDPOINT=$NEXT_PUBLIC_API_ENDPOINT
 ARG NEXT_PUBLIC_SSO_CLIENT_ID=
 ENV NEXT_PUBLIC_SSO_CLIENT_ID=$NEXT_PUBLIC_SSO_CLIENT_ID
+ARG NEXT_PUBLIC_BASE_PATH=
+ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
 
 # Copy package files
 COPY package.json package-lock.json* ./
@@ -37,6 +41,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
+ARG NEXT_PUBLIC_BASE_PATH=
+ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \
@@ -53,9 +59,9 @@ USER nextjs
 
 EXPOSE 3000
 
-# Health check
+# Health check (supports basePath like /tds)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/login', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)}).on('error', () => process.exit(1))"
+  CMD node -e "const p=process.env.NEXT_PUBLIC_BASE_PATH||'';require('http').get('http://localhost:3000'+p+'/login', (r) => {process.exit(r.statusCode === 200 || r.statusCode === 307 || r.statusCode === 308 ? 0 : 1)}).on('error', () => process.exit(1))"
 
 # Start the application
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "if [ -f server.js ]; then node server.js; elif [ -f frontend/server.js ]; then cd frontend && node server.js; else node server.js; fi"]

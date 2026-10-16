@@ -21,7 +21,9 @@ async function hasValidSession(token: string | undefined): Promise<boolean> {
 // Send the visitor to the login page and drop a token that no longer works. Without the
 // delete, /login would see "a token" and bounce back to /dashboard forever.
 function redirectToLogin(request: NextRequest, hadToken: boolean) {
-  const response = NextResponse.redirect(new URL("/login", request.url));
+  const loginUrl = request.nextUrl.clone();
+  loginUrl.pathname = "/login";
+  const response = NextResponse.redirect(loginUrl);
   if (hadToken) response.cookies.delete(TOKEN_COOKIE);
   return response;
 }
@@ -32,14 +34,21 @@ export async function proxy(request: NextRequest) {
   const loggedIn = await hasValidSession(token);
 
   if (url.pathname === "/") {
-    return loggedIn
-      ? NextResponse.redirect(new URL("/dashboard", request.url))
-      : redirectToLogin(request, Boolean(token));
+    if (loggedIn) {
+      const dashboardUrl = request.nextUrl.clone();
+      dashboardUrl.pathname = "/dashboard";
+      dashboardUrl.search = "";
+      return NextResponse.redirect(dashboardUrl);
+    }
+    return redirectToLogin(request, Boolean(token));
   }
 
   if (url.pathname.startsWith("/login")) {
     if (loggedIn) {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
+      const dashboardUrl = request.nextUrl.clone();
+      dashboardUrl.pathname = "/dashboard";
+      dashboardUrl.search = "";
+      return NextResponse.redirect(dashboardUrl);
     }
     // Show the login form; a stale token is removed so it cannot cause trouble later.
     const response = NextResponse.next();

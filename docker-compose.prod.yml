@@ -59,6 +59,7 @@ services:
       - "traefik.http.routers.tds-backend.rule=Host(`pe.spil.co.id`) && PathPrefix(`/tds-api`)"
       - "traefik.http.routers.tds-backend.entrypoints=websecure"
       - "traefik.http.routers.tds-backend.tls=true"
+      - "traefik.http.routers.tds-backend.priority=100"
       - "traefik.http.routers.tds-backend.middlewares=strip-tds-api"
       - "traefik.http.middlewares.strip-tds-api.stripprefix.prefixes=/tds-api"
       - "traefik.http.services.tds-backend.loadbalancer.server.port=8080"
@@ -74,6 +75,7 @@ services:
       args:
         NEXT_PUBLIC_API_ENDPOINT: ${NEXT_PUBLIC_API_ENDPOINT:-https://pe.spil.co.id/tds-api}
         NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-}
+        NEXT_PUBLIC_SSO_CLIENT_ID: ${SSO_CLIENT_ID:-}
 
     env_file: .env
     restart: always
@@ -82,6 +84,7 @@ services:
       NODE_ENV: production
       NEXT_PUBLIC_API_ENDPOINT: ${NEXT_PUBLIC_API_ENDPOINT:-https://pe.spil.co.id/tds-api}
       NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-}
+      NEXT_PUBLIC_SSO_CLIENT_ID: ${SSO_CLIENT_ID:-}
       JWT_SECRET: ${JWT_SECRET}
 
     depends_on:
@@ -97,9 +100,10 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-net"
-      - "traefik.http.routers.tds-frontend.rule=Host(`pe.spil.co.id`) && PathPrefix(`/tds`)"
+      - "traefik.http.routers.tds-frontend.rule=Host(`pe.spil.co.id`) && (PathPrefix(`/tds/`) || Path(`/tds`))"
       - "traefik.http.routers.tds-frontend.entrypoints=websecure"
       - "traefik.http.routers.tds-frontend.tls=true"
+      - "traefik.http.routers.tds-frontend.priority=10"
       - "traefik.http.services.tds-frontend.loadbalancer.server.port=3000"
 
 networks:

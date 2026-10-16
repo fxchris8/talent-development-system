@@ -65,9 +65,10 @@ export default function Completion({ assessmentData, clearStoredData, role }: Co
               </p>
             </div>
             <Button
-              onClick={() =>
-                (window.location.href = "/new-recruiter/crew-value-assessment/" + role)
-              }
+              onClick={() => {
+                const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+                window.location.href = `${basePath}/new-recruiter/crew-value-assessment/` + role;
+              }}
             >
               Tutup
             </Button>

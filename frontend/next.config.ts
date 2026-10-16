@@ -1,12 +1,15 @@
 import type { NextConfig } from "next";
 
 const isDevelopment = process.env.NODE_ENV === "development";
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 const nextConfig: NextConfig = {
   /* config options here */
 
+  basePath: basePath ? basePath : undefined,
+
   // Enable standalone output for Docker production
-  output: process.env.NODE_ENV === "production" ? "standalone" : undefined,
+  output: "standalone",
 
   images: {
     remotePatterns: [
